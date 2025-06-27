@@ -1,0 +1,31 @@
+[package]
+name = "raman-cli-tools"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ansi_term = "0.12"
+anyhow = { version = "1.0", features = ["backtrace"] }
+argmin-math = "0.2"
+argmin = { version = "0.7", default-features = false }
+chrono = "0.4"
+clap = { version = "3.0", features = ["derive"] }
+csv = "1.1"
+dyn-clonable = "0.9"
+eframe = "0.27"
+egui = "0.27"
+egui_plot = "0.27.2"
+finitediff = "0.1"
+ndarray-csv = "0.5.1"
+ndarray-stats = "0.5.1"
+ndarray = { version = "0.15", features = ["rayon"] }
+noisy_float = "0.2.0"
+regex = "1.7"
+rfd = "0.11"
+serde = { version = "1", features = ["derive"]}
+serde_yaml = "0.9.4"
+sha256 = "1.1"
+splines = "4.1"
+image = { version = "0.25.1", features = ["png"], default_features = false }
