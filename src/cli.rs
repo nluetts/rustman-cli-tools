@@ -1,5 +1,6 @@
 use crate::common::{Dataset, Pipeline};
 use crate::plot::PlotTransform;
+use crate::transformations::calibration::CalibrationTransform;
 use crate::transformations::{
     align::AlignTransform, append::AppendTransform, average::AverageTransform,
     count_conversion::CountConversionTransform, despike::DespikeTransform,
@@ -43,6 +44,8 @@ pub enum Commands {
     Average(AverageTransform),
     /// Draw and subtract a spline baseline (from all frames).
     Baseline(DrawBaselineTransform),
+    /// Apply a linear calibration to the wavelength axis.
+    Calibration(CalibrationTransform),
     /// Convert from counts to photoelectrons per second.
     CountConverion(CountConversionTransform),
     /// Apply laplace edge-detection despike algorithm.
@@ -73,12 +76,13 @@ pub enum Commands {
     GUI,
 }
 
-const COMMANDS: [&str; 18] = [
+const COMMANDS: [&str; 19] = [
     // REGISTER: new transformers must get entry here.
     "align",
     "append",
     "average",
     "baseline",
+    "calibration",
     "count-conversion",
     "default",
     "despike",

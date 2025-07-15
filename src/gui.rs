@@ -27,6 +27,7 @@ use crate::{
         append::AppendTransform,
         average::AverageTransform,
         baseline::BaselineTransform,
+        calibration::CalibrationTransform,
         count_conversion::CountConversionTransform,
         despike::DespikeTransform,
         finning::FinningTransform,
@@ -190,6 +191,11 @@ impl RamanGuiApp {
                     &mut self.insert_transformer,
                     InsertTransformer::Average,
                     "Average",
+                );
+                ui.selectable_value(
+                    &mut self.insert_transformer,
+                    InsertTransformer::Calibrate,
+                    "Calibration",
                 );
                 ui.selectable_value(
                     &mut self.insert_transformer,
@@ -603,6 +609,7 @@ impl RamanGuiApp {
 
     fn insert_transformation(&mut self, i: usize) {
         let trnsf: Box<dyn TransformerGUI> = match &self.insert_transformer {
+            // REGISTER
             InsertTransformer::None => return,
             InsertTransformer::Align => Box::new(AlignTransform { cost_max_abs: 0.1 }),
             InsertTransformer::Append => Box::new(AppendTransform {
@@ -616,6 +623,7 @@ impl RamanGuiApp {
                 points: vec![],
                 store: false,
             }),
+            InsertTransformer::Calibrate => Box::new(CalibrationTransform::default()),
             InsertTransformer::CountConversion => Box::new(CountConversionTransform::default()),
             InsertTransformer::Despike => Box::new(DespikeTransform {
                 siglim: 10.0,
@@ -650,6 +658,7 @@ impl RamanGuiApp {
                 Box::new(NormalizeTransform {
                     xi: x_max,
                     xj: None,
+                    filter_range: None,
                     local_baseline: false,
                     target_frames: None,
                     gui_text_buffers: NormalizeIOBuffers::default(),
@@ -810,6 +819,7 @@ enum InsertTransformer {
     Append,
     Average,
     Baseline,
+    Calibrate,
     CountConversion,
     Despike,
     Finning,
@@ -881,6 +891,32 @@ impl TransformerGUI for BaselineTransform {
     }
     fn should_plot_dataset_state_after_transformation(&self) -> bool {
         false
+    }
+}
+
+impl TransformerGUI for CalibrationTransform {
+    fn render_form(&mut self, ui: &mut Ui) -> () {
+        ui.heading("Calibration");
+        let mut remove: Option<usize> = None;
+        for (i, pair) in self.points.iter_mut().enumerate() {
+            ui.label(format!("point {}:", i + 1));
+            ui.horizontal(|ui| {
+                if ui.button("-").clicked() {
+                    remove = Some(i);
+                }
+                ui.add(egui::DragValue::new(&mut pair.a).speed(1.0));
+                ui.add(egui::DragValue::new(&mut pair.b).speed(1.0));
+            });
+        }
+
+        if let Some(ix) = remove {
+            self.points.remove(ix);
+        }
+
+        ui.separator();
+        if ui.button("+").clicked() {
+            self.points.push(Pair { a: 1.0, b: 1.0 });
+        }
     }
 }
 

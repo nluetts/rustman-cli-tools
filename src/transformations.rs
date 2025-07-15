@@ -2,6 +2,7 @@ pub mod align;
 pub mod append;
 pub mod average;
 pub mod baseline;
+pub mod calibration;
 pub mod count_conversion;
 pub mod despike;
 pub mod draw_baseline;

@@ -1,4 +1,5 @@
 use crate::gui::TransformerGUI;
+use crate::transformations::calibration::CalibrationTransform;
 use crate::transformations::offset::OffsetIOBuffers;
 use crate::transformations::{
     align::AlignTransform, append::AppendTransform, average::AverageTransform,
@@ -342,6 +343,7 @@ fn yaml_segment_to_transform(segment: &String) -> Result<Box<dyn TransformerGUI>
         AlignTransform,
         AppendTransform,
         AverageTransform,
+        CalibrationTransform,
         CountConversionTransform,
         DespikeTransform,
         BaselineTransform,
@@ -376,6 +378,9 @@ impl Pipeline {
                     }
                     "baseline" => {
                         transformations.push(Box::new(BaselineTransform::parse_from(subargs)))
+                    }
+                    "calibrate" => {
+                        transformations.push(Box::new(CalibrationTransform::parse_from(subargs)))
                     }
                     "despike" => {
                         transformations.push(Box::new(DespikeTransform::parse_from(subargs)))
