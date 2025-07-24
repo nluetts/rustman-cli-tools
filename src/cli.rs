@@ -14,7 +14,7 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::io::BufWriter;
 
-#[derive(Parser, Serialize, Deserialize)]
+#[derive(Parser, Serialize, Deserialize, Debug)]
 #[clap(name = "Raman CLI Tools")]
 pub struct Cli {
     #[clap(parse(from_os_str))]
@@ -33,7 +33,7 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
-#[derive(Subcommand, Deserialize)]
+#[derive(Subcommand, Deserialize, Debug)]
 pub enum Commands {
     // REGISTER: new transformers must be entered here.
     /// Align frames.
@@ -143,9 +143,17 @@ impl Preprocessor {
     }
 
     pub fn get_input_data(&mut self) -> Result<Dataset> {
-        // read previous comments into string
-        let mut dataset =
-            Dataset::from_csv(&self.args.filepath, self.args.comment, self.args.delimiter)?;
+        let mut dataset = if self
+            .args
+            .filepath
+            .as_ref()
+            .is_some_and(|path| path.extension().unwrap_or_default() == "spe")
+        {
+            Dataset::from_spe(&self.args.filepath.as_ref().unwrap())
+                .map_err(|e| anyhow!("Could not read SPE file: {e}"))?
+        } else {
+            Dataset::from_csv(&self.args.filepath, self.args.comment, self.args.delimiter)?
+        };
         dataset.metadata =
             "preprocessor: arguments\n".to_owned() + &serde_yaml::to_string(&self.args)? + "---\n";
         Ok(dataset)

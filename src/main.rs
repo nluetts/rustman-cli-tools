@@ -4,6 +4,7 @@ mod common;
 mod gui;
 mod gui_plot_extensions;
 mod plot;
+mod spe_rs;
 mod transformations;
 mod utils;
 

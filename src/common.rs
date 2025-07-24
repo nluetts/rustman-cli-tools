@@ -1,4 +1,5 @@
 use crate::gui::TransformerGUI;
+use crate::spe_rs::SpeData;
 use crate::transformations::calibration::CalibrationTransform;
 use crate::transformations::offset::OffsetIOBuffers;
 use crate::transformations::{
@@ -17,6 +18,7 @@ use ndarray::{array, Array2, ArrayBase, Axis, Ix1, ViewRepr};
 use ndarray_csv::Array2Reader;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
@@ -199,6 +201,27 @@ impl Dataset {
 
         let mut csv_reader = csv_reader_config.from_reader(input_string.as_bytes());
         let data = csv_reader.deserialize_array2_dynamic()?;
+        Ok(Dataset {
+            data,
+            metadata: String::new(),
+            previous_comments,
+        })
+    }
+    pub fn from_spe(filepath: &std::path::Path) -> Result<Self, Box<dyn Error>> {
+        let spe = SpeData::from_path(filepath)?;
+        let previous_comments = spe.get_meta_data_string()?;
+
+        let frames = spe.get_frames();
+        let wavelength = spe.get_wavelength();
+
+        let data = Array2::from_shape_fn((wavelength.len(), frames.len() * 2), |(i, j)| {
+            if j % 2 == 0 {
+                wavelength[i]
+            } else {
+                frames[(j - 1) / 2][i] as f64
+            }
+        });
+
         Ok(Dataset {
             data,
             metadata: String::new(),
