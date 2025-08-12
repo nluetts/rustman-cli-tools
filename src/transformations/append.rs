@@ -1,5 +1,6 @@
 use super::Transformer;
 use crate::common::Dataset;
+use anyhow::anyhow;
 use anyhow::Result;
 use clap::Parser;
 use ndarray::Axis;
@@ -32,7 +33,17 @@ impl Transformer for AppendTransform {
         serde_yaml::to_string(&self).map_err(anyhow::Error::msg)
     }
     fn transform(&mut self, dataset: &mut Dataset) -> Result<()> {
-        let new_dataset = Dataset::from_csv(&self.filepath, self.comment, self.delimiter)?;
+        let new_dataset = if self
+            .filepath
+            .as_ref()
+            .and_then(|fp| fp.extension())
+            .is_some_and(|ext| ext == "spe")
+        {
+            Dataset::from_spe(self.filepath.as_ref().unwrap())
+                .map_err(|e| anyhow!("Could not read SPE file: {e}"))?
+        } else {
+            Dataset::from_csv(&self.filepath, self.comment, self.delimiter)?
+        };
         dataset.previous_comments += "\n";
         dataset.previous_comments += &new_dataset.previous_comments;
         dataset.data = if self.horizontal {
@@ -43,6 +54,3 @@ impl Transformer for AppendTransform {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod test {}
