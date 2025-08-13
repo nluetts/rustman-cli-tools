@@ -95,6 +95,7 @@ fn spawn_file_loader_thread(
                         if let Some(output_filepath) = rfd::FileDialog::new()
                             .set_directory(dir)
                             .add_filter("CSV", &["csv"])
+                            .add_filter("SPE", &["spe"])
                             .pick_file()
                         {
                             let _result = tx_output_path.send(output_filepath);
@@ -484,14 +485,22 @@ impl RamanGuiApp {
         if let Ok(filepath) = self.filepath_to_load.try_recv() {
             self.output_file_path = make_output_filepath(&filepath);
             self.input_file_path = filepath.clone();
-            self.preprocessor.args.filepath = Some(filepath);
+            self.preprocessor.args.filepath = Some(filepath.clone());
             // if the input file can be parsed as a result from a previous run, load the prev. run
-            let input_string =
-                crate::common::input_data_to_string(&Some(self.input_file_path.to_owned()))?;
+            let input_string = if filepath
+                .extension()
+                .as_ref()
+                .is_some_and(|ext| *ext == "csv")
+            {
+                crate::common::input_data_to_string(&Some(self.input_file_path.to_owned()))?
+            } else {
+                "".to_string()
+            };
             let prp_result =
                 Preprocessor::from_yaml_header(&input_string, true).map_err(|e| eprintln!("{e}"));
             if prp_result.is_ok() && self.reload_pipeline {
                 let mut prp = prp_result.unwrap();
+                dbg!("get input");
                 self.initial_dataset = prp.get_input_data()?;
                 self.dataset = self.initial_dataset.clone();
                 self.pipeline = Pipeline::from_yaml_header(&input_string).map_err(|err| {
