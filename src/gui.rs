@@ -502,7 +502,6 @@ impl RamanGuiApp {
                 Preprocessor::from_yaml_header(&input_string, true).map_err(|e| eprintln!("{e}"));
             if prp_result.is_ok() && self.reload_pipeline {
                 let mut prp = prp_result.unwrap();
-                dbg!("get input");
                 self.initial_dataset = prp.get_input_data()?;
                 self.dataset = self.initial_dataset.clone();
                 self.pipeline = Pipeline::from_yaml_header(&input_string).map_err(|err| {

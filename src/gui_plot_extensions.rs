@@ -469,9 +469,6 @@ fn distance_cursor(plot_ui: &PlotUi, xi: f64, yi: f64) -> Option<N64> {
         // calculate distance in screen coordinates via rescaling to `span`
         // otherwise there can be suprising outcomes when selecing the
         // closest point
-        if point.x - xi == 0.0 {
-            dbg!(point.x, xi);
-        }
         let dist = f64::sqrt(((point.x - xi) / span.0).powi(2) + ((point.y - yi) / span.1).powi(2));
         Some(N64::from_f64(dist))
     } else {

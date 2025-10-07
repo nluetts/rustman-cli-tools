@@ -23,7 +23,6 @@ impl Transformer for RoiTransform {
             .skip(self.roi - 1)
             .step_by(self.num_rois)
             .collect();
-        dbg!(&selected_frames);
         dataset.data = dataset.select_frames(&selected_frames, false)?;
         Ok(())
     }
