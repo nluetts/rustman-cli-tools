@@ -36,6 +36,7 @@ use crate::{
         normalize::{NormalizeIOBuffers, NormalizeTransform},
         offset::OffsetTransform,
         reshape::ReshapeTransform,
+        roi::RoiTransform,
         select::SelectTransform,
         shift::RamanShiftTransform,
         subtract::SubtractTransform,
@@ -248,6 +249,7 @@ impl RamanGuiApp {
                     InsertTransformer::Reshape,
                     "Reshape",
                 );
+                ui.selectable_value(&mut self.insert_transformer, InsertTransformer::Roi, "ROI");
                 ui.selectable_value(
                     &mut self.insert_transformer,
                     InsertTransformer::Select,
@@ -692,6 +694,10 @@ impl RamanGuiApp {
                 rst
             }),
             InsertTransformer::Reshape => Box::new(ReshapeTransform { rows: 1340 }),
+            InsertTransformer::Roi => Box::new(RoiTransform {
+                roi: 1,
+                num_rois: 3,
+            }),
             InsertTransformer::Select => Box::new(SelectTransform {
                 frames: vec![],
                 invert: true,
@@ -837,6 +843,7 @@ enum InsertTransformer {
     Normalize,
     Offset,
     RamanShift,
+    Roi,
     Reshape,
     Select,
     Subtract,
@@ -1147,6 +1154,26 @@ impl TransformerGUI for RamanShiftTransform {
         if let Some(c) = self.correction {
             self.gui_text_buffers.correction = c.to_string();
         }
+    }
+}
+
+impl TransformerGUI for RoiTransform {
+    fn render_form(&mut self, ui: &mut Ui) -> () {
+        ui.heading("Select ROI");
+        ui.label("Number of ROIs");
+
+        ui.add(
+            egui::DragValue::new(&mut self.num_rois)
+                .speed(1)
+                .clamp_range(1..=99),
+        );
+        ui.label("Selected ROI");
+
+        ui.add(
+            egui::DragValue::new(&mut self.roi)
+                .speed(1)
+                .clamp_range(1..=self.num_rois),
+        );
     }
 }
 

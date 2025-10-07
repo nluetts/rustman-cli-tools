@@ -7,8 +7,8 @@ use crate::transformations::{
     baseline::BaselineTransform, count_conversion::CountConversionTransform,
     despike::DespikeTransform, finning::FinningTransform, integrate::IntegrateTransform,
     mask_pixels::MaskTransform, normalize::NormalizeTransform, offset::OffsetTransform,
-    reshape::ReshapeTransform, select::SelectTransform, shift::RamanShiftTransform,
-    subtract::SubtractTransform,
+    reshape::ReshapeTransform, roi::RoiTransform, select::SelectTransform,
+    shift::RamanShiftTransform, subtract::SubtractTransform,
 };
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
@@ -377,6 +377,7 @@ fn yaml_segment_to_transform(segment: &String) -> Result<Box<dyn TransformerGUI>
         OffsetTransform,
         RamanShiftTransform,
         ReshapeTransform,
+        RoiTransform,
         SelectTransform,
         SubtractTransform
     )
@@ -418,6 +419,7 @@ impl Pipeline {
                     "reshape" => {
                         transformations.push(Box::new(ReshapeTransform::parse_from(subargs)))
                     }
+                    "roi" => transformations.push(Box::new(RoiTransform::parse_from(subargs))),
                     "select" => {
                         transformations.push(Box::new(SelectTransform::parse_from(subargs)))
                     }

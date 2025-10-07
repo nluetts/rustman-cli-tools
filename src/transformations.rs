@@ -12,6 +12,7 @@ pub mod mask_pixels;
 pub mod normalize;
 pub mod offset;
 pub mod reshape;
+pub mod roi;
 pub mod select;
 pub mod shift;
 pub mod subtract;
