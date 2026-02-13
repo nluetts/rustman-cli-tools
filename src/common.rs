@@ -329,6 +329,7 @@ impl Dataset {
 
 pub struct Pipeline {
     pub transformations: Vec<Box<dyn TransformerGUI>>,
+    pub skip: std::collections::HashSet<usize>,
 }
 
 /// Match name of tranformation struct in yaml header to identifier of transformation struct
@@ -443,7 +444,10 @@ impl Pipeline {
                 }
             };
         }
-        Self { transformations }
+        Self {
+            transformations,
+            skip: std::collections::HashSet::new(),
+        }
     }
     pub fn from_yaml_header(yaml_header: &str) -> Result<Self> {
         let mut transformations = vec![];
@@ -453,7 +457,10 @@ impl Pipeline {
                 transformations.push(yaml_segment_to_transform(&segment)?);
             }
         }
-        Ok(Self { transformations })
+        Ok(Self {
+            transformations,
+            skip: std::collections::HashSet::new(),
+        })
     }
     pub fn apply(&mut self, ds: &mut Dataset) -> Result<()> {
         for transformation in &mut self.transformations {

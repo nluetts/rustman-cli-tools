@@ -532,12 +532,14 @@ impl RamanGuiApp {
 
         // detect change by the hash of the serialized pipeline configuration
         let pipeline_hash = {
-            let conf_str: String = self
+            let mut conf_str: String = self
                 .pipeline
                 .transformations
                 .iter()
                 .map(|trnsf| trnsf.config_to_string().unwrap())
                 .collect();
+            // Include `skip` to detect change of included / excluded steps
+            conf_str = format!("{}{:?}", conf_str, self.pipeline.skip);
             digest(conf_str)
         };
         // if the pipeline did not change, we do nothing
@@ -550,6 +552,9 @@ impl RamanGuiApp {
         // otherwise, we re-apply the transformations, reusing cache if possible
         let mut last_transformer_hash = "".to_owned();
         for (i, trnsf) in self.pipeline.transformations.iter_mut().enumerate() {
+            if self.pipeline.skip.contains(&i) {
+                continue;
+            }
             let is_last_iter = self.active_step.map(|n| n == i).unwrap_or_default();
             if is_last_iter && !trnsf.should_plot_dataset_state_after_transformation() {
                 // if the dataset is to be plotted before the transformation
@@ -596,6 +601,16 @@ impl RamanGuiApp {
                 if ui.button("Remove").clicked() {
                     self.remove_step = Some(i);
                     self.force_update = true;
+                };
+                if self.pipeline.skip.contains(&i) {
+                    let enable_button = egui::Button::new("Enable").fill(egui::Color32::DARK_RED);
+                    if enable_button.ui(ui).clicked() {
+                        self.pipeline.skip.remove(&i);
+                    }
+                } else {
+                    if ui.button("Disable").clicked() {
+                        self.pipeline.skip.insert(i);
+                    }
                 };
                 if self.active_step.is_some() && self.active_step.unwrap() == i {
                     if ui.button("OK").clicked() {
@@ -783,6 +798,7 @@ impl RamanGuiApp {
             output_file_path,
             pipeline: Pipeline {
                 transformations: vec![],
+                skip: std::collections::HashSet::new(),
             },
             plot_extension: Some(Box::new(SplineExtensionGUI::new(vec![]))),
             plot_points: pts,
