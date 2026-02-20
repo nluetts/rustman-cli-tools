@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::Result;
 use eframe::egui;
-use egui::{Color32, Slider, Ui};
+use egui::{Color32, Slider, Ui, Widget};
 use egui_plot::{Legend, Line, Plot, PlotPoints};
 use image::ColorType;
 use ndarray_stats::QuantileExt;
