@@ -1,11 +1,11 @@
 use crate::common::Dataset;
 use crate::transformations::Transformer;
 use crate::utils::linear_resample_array;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use argmin::core::{CostFunction, Executor};
-use argmin::solver::brent::BrentOpt;
+use argmin::solver::neldermead::NelderMead;
 use clap::Parser;
-use ndarray::{s, Array1, ArrayBase, Data, Ix1};
+use ndarray::{Array2, ArrayView2, Axis, s};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser, Serialize, Deserialize)]
@@ -25,33 +25,67 @@ impl Transformer for AlignTransform {
         serde_yaml::to_string(&self).map_err(anyhow::Error::msg)
     }
     fn transform(&mut self, dataset: &mut Dataset) -> Result<()> {
-        let nrows = dataset.data.nrows();
-        let ref_grid = dataset.data.slice(s![.., 0]).into_owned();
-        let ref_frame = dataset.data.slice(s![.., 1]).into_owned();
+        let ref_spectrum: ndarray::ArrayView2<_> = dataset.data.slice(s![.., 0..=1]);
+        // Find maximum in reference frame
+        let ref_grid_max = ref_spectrum
+            .rows()
+            .into_iter()
+            .fold((f64::NAN, f64::NAN), |(xmax, ymax), row| {
+                let x = row[0];
+                let y = row[1];
+
+                if ymax.is_nan() || y > ymax {
+                    return (x, y);
+                } else {
+                    return (xmax, ymax);
+                }
+            })
+            .0;
+        // Crop reference spectrum
+        let ref_spectrum = crop(ref_spectrum, ref_grid_max);
+
+        dbg!(&ref_spectrum);
+
         for i in (2..dataset.data.ncols()).step_by(2) {
-            // set all x-axes to values from reference frame (frame 1)
-            for j in 0..nrows {
-                dataset.data[[j, i]] = ref_grid[j];
-            }
-            let mut frame = dataset.data.column_mut(i + 1);
-            let init_param = 0.0;
-            let problem = OptAlignment::new(&ref_frame, &frame)?;
-            let solver = BrentOpt::new(-f64::abs(self.cost_max_abs), f64::abs(self.cost_max_abs));
+            let spectrum = dataset.data.slice(s![.., i..=i + 1]);
+
+            let problem = OptAlignment {
+                frame_a: ref_spectrum.view(),
+                frame_b: spectrum.view(),
+                debug: false,
+            };
+            let solver = NelderMead::new(vec![
+                -f64::abs(self.cost_max_abs),
+                f64::abs(self.cost_max_abs),
+            ]);
             let res = Executor::new(problem, solver)
-                .configure(|state| state.param(init_param))
+                .configure(|state| state.param(0.0))
                 .run()?;
             let dx = match res.state().best_param {
                 None => {
                     return Err(anyhow!(
                         "frame alignment failed, optimization did not return optimized parameters"
-                    ))
+                    ));
                 }
                 Some(param) => param,
             };
-            let shifted_grid = &ref_grid + dx;
-            let aligned_frame = linear_resample_array(&shifted_grid, &frame, &ref_grid);
-            for j in 0..nrows {
-                frame[j] = aligned_frame[j]
+
+            // let problem = OptAlignment {
+            //     frame_a: ref_spectrum.view(),
+            //     frame_b: spectrum.view(),
+            //     debug: true,
+            // };
+            // let _ = problem.cost(&dx);
+
+            let shifted_grid = &spectrum.slice(s![.., 0]) + dbg!(dx);
+            let aligned_frame = linear_resample_array(
+                &shifted_grid,
+                &spectrum.slice(s![.., 1]),
+                &spectrum.slice(s![.., 0]),
+            );
+            let mut frame = dataset.data.column_mut(i + 1);
+            for (fr, afr) in frame.iter_mut().zip(aligned_frame.iter()) {
+                *fr = *afr
             }
         }
         Ok(())
@@ -71,78 +105,69 @@ impl Transformer for AlignTransform {
     }
 }
 
-struct OptAlignment<'a, S, T>
-where
-    S: Data<Elem = f64>,
-    T: Data<Elem = f64>,
-{
-    frame_a: &'a ArrayBase<S, Ix1>,
-    frame_b: &'a ArrayBase<T, Ix1>,
+fn crop(ref_spectrum: ArrayView2<f64>, ref_grid_max: f64) -> Array2<f64> {
+    let idx: ndarray::Array1<_> = ref_spectrum
+        .axis_iter(Axis(0))
+        .enumerate()
+        .filter_map(|(i, row)| {
+            // TODO remove these hard coded bounds (0.5)
+            if row[0] > ref_grid_max - 0.5 && row[0] < ref_grid_max + 0.5 {
+                Some(i)
+            } else {
+                None
+            }
+        })
+        .collect();
+    ref_spectrum
+        .slice(s![idx[0]..idx[idx.len() - 1], ..])
+        .into_owned()
 }
 
-impl<'a, S, T> OptAlignment<'a, S, T>
-where
-    S: Data<Elem = f64>,
-    T: Data<Elem = f64>,
-{
-    fn new(frame_a: &'a ArrayBase<S, Ix1>, frame_b: &'a ArrayBase<T, Ix1>) -> Result<Self> {
-        if frame_a.len() == frame_b.len() {
-            Ok(Self { frame_a, frame_b })
-        } else {
-            Err(anyhow!(
-                "frames that shall be aligned must be of same length"
-            ))
-        }
-    }
+struct OptAlignment<'a> {
+    frame_a: ArrayView2<'a, f64>,
+    frame_b: ArrayView2<'a, f64>,
+    debug: bool,
 }
 
-impl<'a, S, T> CostFunction for OptAlignment<'a, S, T>
-where
-    S: Data<Elem = f64>,
-    T: Data<Elem = f64>,
-{
+impl<'a> CostFunction for OptAlignment<'a> {
     type Param = f64; // x shift
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output> {
-        let grid: Array1<f64> = (1..self.frame_a.len()).map(|x| x as f64).collect();
-        let x_shifted = &grid + *param;
-        let ys = linear_resample_array(&x_shifted, self.frame_b, &grid);
+        let mut iter_b = self.frame_b.axis_iter(Axis(0)).peekable();
         let mut sum = 0.0;
-        for (y1, y0) in ys.iter().zip(self.frame_a) {
-            // this seems to work rather well, the cost function in the python implementation
-            // (square of difference) does not work here
-            let cst = -(y1 * y0).abs();
-            if !cst.is_nan() {
-                sum += cst;
+        for (rowi, rowj) in self
+            .frame_a
+            .axis_iter(Axis(0))
+            .zip(self.frame_a.axis_iter(Axis(0)).skip(1))
+        {
+            let (xi, yi, xj, yj) = (rowi[0], rowi[1], rowj[0], rowj[1]);
+            if self.debug {
+                dbg!((xi, yi, xj, yj));
+            }
+            while let Some(rowb) = iter_b.peek() {
+                let xb = rowb[0] + param;
+                let yb = rowb[1];
+                if xb < xi {
+                    iter_b.next();
+                    continue;
+                }
+                if xb > xj {
+                    if self.debug {
+                        eprintln!("---- break: {xb}, {yb}");
+                    }
+                    break;
+                }
+                if self.debug {
+                    eprintln!("---- interpolate: {xb}, {yb}")
+                }
+                // xi <= xb <= xj → we interpolate
+                let yinterp = yi * ((1.0 - (xb - xi)) / (xj - xi)).abs()
+                    + yj * ((1.0 - (xj - xb)) / (xj - xi)).abs();
+                sum += (yinterp - yb).powi(2);
+                iter_b.next();
             }
         }
-        Ok(sum)
+        Ok(sum.sqrt())
     }
 }
-
-// impl<'a, S, T> Gradient for OptAlignment<'a, S, T>
-// where
-//     S: Data<Elem = f64>,
-//     T: Data<Elem = f64>,
-// {
-//     type Param = f64;
-//     type Gradient = Vec<f64>;
-
-//     fn gradient(&self, param: &Self::Param) -> Result<Self::Gradient> {
-//         Ok(vec![*param].forward_diff(&|p| self.cost(&p[0]).unwrap()))
-//     }
-// }
-
-// impl<'a, S, T> Hessian for OptAlignment<'a, S, T>
-// where
-//     S: Data<Elem = f64>,
-//     T: Data<Elem = f64>,
-// {
-//     type Param = Array1<f64>; // x and y shift
-//     type Hessian = Array2<f64>;
-
-//     fn hessian(&self, param: &Self::Param) -> Result<Self::Hessian> {
-//         Ok(param.forward_hessian(&|p| self.gradient(p).unwrap()))
-//     }
-// }
