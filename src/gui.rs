@@ -3,7 +3,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     path::PathBuf,
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::mpsc::{Receiver, Sender, channel},
 };
 
 use anyhow::Result;
@@ -16,13 +16,14 @@ use sha256::digest;
 
 use crate::{
     cli::Preprocessor,
-    common::{default_transformations, Dataset, Pair, Pipeline},
+    common::{Dataset, Pair, Pipeline, default_transformations},
     gui_plot_extensions::{
         IntegrateExtensionGUI, MaskExtensionGUI, NormalizeExtensionGUI, PlotExtensionGUI,
         PlotExtensionResult, SplineExtensionGUI,
     },
     plot::PALETTE,
     transformations::{
+        Transformer,
         align::AlignTransform,
         append::AppendTransform,
         average::AverageTransform,
@@ -40,7 +41,6 @@ use crate::{
         select::SelectTransform,
         shift::RamanShiftTransform,
         subtract::SubtractTransform,
-        Transformer,
     },
 };
 
@@ -468,20 +468,16 @@ impl RamanGuiApp {
             // TODO: Refactor to make this part DRY
             let input_string =
                 crate::common::input_data_to_string(&Some(self.input_file_path.to_owned()))?;
-            let prp_result =
-                Preprocessor::from_yaml_header(&input_string, true).map_err(|e| eprintln!("{e}"));
-            if prp_result.is_ok() {
-                let mut prp = prp_result.unwrap();
-                self.initial_dataset = prp.get_input_data()?;
-                self.dataset = self.initial_dataset.clone();
-                self.pipeline = Pipeline::from_yaml_header(&input_string)?;
-                self.pipeline
-                    .transformations
-                    .iter_mut()
-                    .for_each(|trnsf| trnsf.update_text_buffers());
-                self.input_file_path = prp.args.filepath.unwrap_or(PathBuf::default());
-                self.output_file_path = make_output_filepath(&self.input_file_path);
-            }
+            let mut prp = Preprocessor::from_yaml_header(&input_string, true)?;
+            self.initial_dataset = prp.get_input_data()?;
+            self.dataset = self.initial_dataset.clone();
+            self.pipeline = Pipeline::from_yaml_header(&input_string)?;
+            self.pipeline
+                .transformations
+                .iter_mut()
+                .for_each(|trnsf| trnsf.update_text_buffers());
+            self.input_file_path = prp.args.filepath.unwrap_or(PathBuf::default());
+            self.output_file_path = make_output_filepath(&self.input_file_path);
         }
         // check if new file should be loaded
         if let Ok(filepath) = self.filepath_to_load.try_recv() {
@@ -916,7 +912,9 @@ impl TransformerGUI for BaselineTransform {
         match ext {
             PlotExtensionResult::Spline(points) => self.points = points,
             _ => {
-                panic!("Baseline transformer got wrong plot extension result. This should not have happend, please file an issue.")
+                panic!(
+                    "Baseline transformer got wrong plot extension result. This should not have happend, please file an issue."
+                )
             }
         }
     }
@@ -1028,7 +1026,9 @@ impl TransformerGUI for IntegrateTransform {
     fn update_from_plot_extension(&mut self, ext: PlotExtensionResult) -> () {
         match ext {
             PlotExtensionResult::Integrate(bounds) => self.bounds = bounds,
-            _ => panic!("Integrate transformer got wrong plot extension result. This should not have happend, please file an issue."),
+            _ => panic!(
+                "Integrate transformer got wrong plot extension result. This should not have happend, please file an issue."
+            ),
         }
     }
 
@@ -1052,7 +1052,9 @@ impl TransformerGUI for MaskTransform {
     fn update_from_plot_extension(&mut self, result: PlotExtensionResult) -> () {
         match result {
             PlotExtensionResult::Mask(mask) => self.mask = mask,
-            _ => panic!("Baseline transformer got wrong plot extension result. This should not have happend, please file an issue."),
+            _ => panic!(
+                "Baseline transformer got wrong plot extension result. This should not have happend, please file an issue."
+            ),
         }
     }
     fn should_plot_dataset_state_after_transformation(&self) -> bool {

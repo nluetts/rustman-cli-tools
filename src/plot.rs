@@ -77,7 +77,7 @@ impl Transformer for PlotTransform {
             self.x_lim,
             self.y_lim,
         );
-        eframe::run_native("Dataset Plot", options, Box::new(|_cc| Box::new(pw)));
+        let _ = eframe::run_native("Dataset Plot", options, Box::new(|_cc| Box::new(pw)));
         dataset.data = ds_arcmutex
             .lock()
             .expect("Unable to aquire lock to read data from plot.")

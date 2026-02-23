@@ -9,7 +9,7 @@ use crate::transformations::{
     reshape::ReshapeTransform, roi::RoiTransform, select::SelectTransform,
     shift::RamanShiftTransform, subtract::SubtractTransform,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::io::BufWriter;
@@ -165,9 +165,9 @@ impl Preprocessor {
     pub fn get_pipeline(&self) -> Pipeline {
         Pipeline::from_cli_args(self.subcommand_args.clone().unwrap_or_else(|| vec![vec![]]))
     }
-    pub fn get_gui_pipeline(&self) -> Vec<Box<dyn crate::gui::TransformerGUI>> {
-        vec![]
-    }
+    // pub fn get_gui_pipeline(&self) -> Vec<Box<dyn crate::gui::TransformerGUI>> {
+    //     vec![]
+    // }
     pub fn print_dataset(&self, dataset: &Dataset) -> Result<()> {
         let buf = BufWriter::new(std::io::stdout());
         dataset.write(buf)?;
@@ -175,18 +175,30 @@ impl Preprocessor {
     }
 
     pub fn from_yaml_header(yaml_header: &str, gui_mode: bool) -> Result<Self> {
-        let preprocessor_yaml = if let Some(yaml) = yaml_header
-            .split("---")
-            .map(|segment| segment.replace("# ", "").trim().to_string())
-            .find(|segment| segment.contains("preprocessor: arguments"))
-        {
-            yaml
-        } else {
+        let mut preprocessor_yaml = String::new();
+        for segment in yaml_header.split("---") {
+            if segment
+                .lines()
+                .any(|line| line.starts_with("# preprocessor: arguments"))
+            {
+                segment.lines().for_each(|line| {
+                    preprocessor_yaml.push('\n');
+                    if line.starts_with("# ") {
+                        preprocessor_yaml.push_str(&line[2..]);
+                    } else {
+                        preprocessor_yaml.push_str(line);
+                    }
+                });
+                break;
+            }
+        }
+        if preprocessor_yaml.is_empty() {
             return Err(anyhow!(format!(
                 "Unable to parse preprocessor from YAML header,\
                 \nmissing 'preprocessor: arguments' segment"
             )));
-        };
+        }
+
         let args = serde_yaml::from_str::<Cli>(&preprocessor_yaml)
             .with_context(|| format!("Offending YAML input:\n{}", preprocessor_yaml))?;
         Ok(Self {

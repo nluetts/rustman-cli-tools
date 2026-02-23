@@ -1,8 +1,5 @@
-use std::ops::Index;
-
 use egui::{Color32, Ui};
 use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Points};
-use ndarray::Axis;
 use noisy_float::{prelude::Float, types::N64};
 use splines::{Key, Spline};
 
@@ -375,12 +372,6 @@ impl PlotExtensionGUI for IntegrateExtensionGUI {
 }
 
 // ---- MaskExtension -------------------------------------------------------
-
-#[derive(Debug)]
-pub struct MaskedPoint {
-    pub frame: usize,
-    pub pixel: usize,
-}
 
 /// Draw spline baseline that is subtracted from all scans.
 #[derive(Debug)]

@@ -10,13 +10,14 @@ use crate::transformations::{
     reshape::ReshapeTransform, roi::RoiTransform, select::SelectTransform,
     shift::RamanShiftTransform, subtract::SubtractTransform,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use csv::ReaderBuilder;
 use egui_plot::PlotPoints;
-use ndarray::{array, Array2, ArrayBase, Axis, Ix1, ViewRepr};
+use ndarray::{Array2, ArrayBase, Axis, Ix1, ViewRepr, array};
 use ndarray_csv::Array2Reader;
 use regex::Regex;
+use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::Display;
@@ -100,7 +101,9 @@ pub fn input_data_to_string(filepath: &Option<std::path::PathBuf>) -> Result<Str
                             .unwrap_or_else(|e| eprintln!("ERROR: {e}"));
                     }
                     Err(_) => {
-                        eprintln!("WARNING: could not read data from STDIN, proceeding with empty input data.");
+                        eprintln!(
+                            "WARNING: could not read data from STDIN, proceeding with empty input data."
+                        );
                         tx.send(String::new())
                             .unwrap_or_else(|e| eprintln!("ERROR: {e}"));
                     }
@@ -157,15 +160,17 @@ impl Dataset {
                 0 => {
                     refx = Some(r);
                     count_ref += 1;
-                },
+                }
                 1 => {
                     if let Some(rx) = refx {
                         refs.push((rx, r));
                         refx = None;
                     }
                     count_ref = 0;
-                },
-                _ => unreachable!("Partinioned frames into chunks of size other than 2. This should not have happened, please file an issue.")
+                }
+                _ => unreachable!(
+                    "Partinioned frames into chunks of size other than 2. This should not have happened, please file an issue."
+                ),
             }
         }
         refs.into_iter()
@@ -452,7 +457,25 @@ impl Pipeline {
     pub fn from_yaml_header(yaml_header: &str) -> Result<Self> {
         let mut transformations = vec![];
         for segment in yaml_header.split("---") {
-            let segment = segment.replace("# ", "").trim().to_string();
+            let segment = segment
+                .lines()
+                .filter_map(|line| {
+                    if line.starts_with("# # ") {
+                        // Comment from prev. processed file loaded into pipeline, ignore
+                        return None;
+                    }
+                    if line.starts_with("# ") {
+                        // Uncomment one level
+                        Some(line[2..].trim())
+                    } else {
+                        Some(line.trim())
+                    }
+                })
+                .fold(String::new(), |mut acc, next| {
+                    acc.push('\n');
+                    acc.push_str(&next);
+                    acc
+                });
             if segment.contains("transformation: ") {
                 transformations.push(yaml_segment_to_transform(&segment)?);
             }

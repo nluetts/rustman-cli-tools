@@ -1,7 +1,7 @@
 [package]
 name = "raman-cli-tools"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -28,4 +28,4 @@ serde = { version = "1", features = ["derive"]}
 serde_yaml = "0.9.4"
 sha256 = "1.1"
 splines = "4.1"
-image = { version = "0.25.1", features = ["png"], default_features = false }
+image = { version = "0.25.1", features = ["png"], default-features = false }

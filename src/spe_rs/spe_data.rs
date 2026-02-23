@@ -70,20 +70,6 @@ impl SpeData {
         Ok(data)
     }
 
-    pub fn write_csv<W: Write>(&self, wrt: &mut W) -> Result<(), Box<dyn Error>> {
-        let meta_string = self.get_meta_data_string()?;
-        writeln!(wrt, "{meta_string}")?;
-
-        for frame in self.frames.iter() {
-            for (cts, wn) in frame.iter().zip(self.wavelength_axis.iter()) {
-                writeln!(wrt, "{wn},{cts}")?;
-            }
-        }
-
-        wrt.flush()?;
-        Ok(())
-    }
-
     pub fn get_meta_data_string(&self) -> Result<String, Box<dyn Error>> {
         let mut wrt = BufWriter::new(Vec::<u8>::with_capacity(1000));
         writeln!(wrt, "# filename = {}", self.filename)?;
