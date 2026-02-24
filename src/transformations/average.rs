@@ -2,7 +2,7 @@ use crate::common::Dataset;
 use crate::transformations::Transformer;
 use anyhow::Result;
 use clap::Parser;
-use ndarray::{s, Axis};
+use ndarray::{Array2, Axis, array, s};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser, Serialize, Deserialize)]
@@ -17,7 +17,19 @@ impl Transformer for AverageTransform {
         let mask = s![.., 1..;2]; // every second column
         let average_intensity = dataset.data.slice(mask).mean_axis(Axis(1)).unwrap();
         let wavenumber_axis = dataset.data.slice(s![.., 0]);
-        dataset.data = ndarray::stack(Axis(1), &[wavenumber_axis, average_intensity.view()])?;
+        let mut averaged = Array2::default((0, 2));
+        let mut buf = array![0.0, 0.0];
+        for (x, y) in wavenumber_axis.iter().zip(average_intensity.iter()) {
+            // Filter NaN
+            if x.is_nan() || y.is_nan() {
+                continue;
+            }
+            buf[0] = *x;
+            buf[1] = *y;
+            averaged.push_row(buf.view())?;
+        }
+
+        dataset.data = averaged;
         Ok(())
     }
 }

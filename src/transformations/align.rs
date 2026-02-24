@@ -53,10 +53,17 @@ impl Transformer for AlignTransform {
         else {
             return Err(anyhow!("Unable to identify maximum in reference spectrum."));
         };
+
+        let ref_grid = ref_spectrum.slice(s![.., 0]).into_owned();
         // Crop reference spectrum
         let ref_spectrum = crop(ref_spectrum, idx_ref_max);
 
         for i in (2..dataset.data.ncols()).step_by(2) {
+            // Set all x-values to the reference grid—if we don't do this, a
+            // later average transform will not work properly
+            for j in 0..ref_grid.len() {
+                dataset.data[[j, i]] = ref_grid[j];
+            }
             let spectrum = dataset.data.slice(s![.., i..=i + 1]);
 
             let problem = OptAlignment {
@@ -64,8 +71,6 @@ impl Transformer for AlignTransform {
                 frame_b: spectrum.view(),
                 debug: false,
             };
-            // let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
-            // let solver = argmin::solver::quasinewton::BFGS::new(linesearch);
             let solver = NelderMead::new(vec![-f64::abs(self.tuning), f64::abs(self.tuning)]);
             let res = Executor::new(problem, solver)
                 .configure(|state| state.param(0.0))
@@ -79,13 +84,6 @@ impl Transformer for AlignTransform {
                 Some(param) => param,
             };
 
-            // let problem = OptAlignment {
-            //     frame_a: ref_spectrum.view(),
-            //     frame_b: spectrum.view(),
-            //     debug: true,
-            // };
-            // let _ = problem.cost(&dx);
-
             let shifted_grid = &spectrum.slice(s![.., 0]) + dx;
             let aligned_frame = linear_resample_array(
                 &shifted_grid,
@@ -96,15 +94,16 @@ impl Transformer for AlignTransform {
             for (fr, afr) in frame.iter_mut().zip(aligned_frame.iter()) {
                 *fr = *afr
             }
-            let mut valid_rows: Array2<f64> = Array2::default((0, dataset.data.shape()[1]));
-            for row in dataset.data.axis_iter(Axis(0)) {
-                if row.iter().all(|x| x.is_finite()) {
-                    valid_rows.push_row(row)?
-                }
-            }
-
-            dataset.data = valid_rows;
         }
+
+        // Filter out NaN
+        let mut valid_data = Array2::default((0, dataset.data.shape()[1]));
+        for row in dataset.data.rows() {
+            if !row.iter().any(|x| !x.is_finite()) {
+                valid_data.push_row(row)?;
+            }
+        }
+        dataset.data = valid_data;
         Ok(())
     }
 
