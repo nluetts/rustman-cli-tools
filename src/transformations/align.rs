@@ -14,10 +14,17 @@ pub struct AlignTransform {
     #[clap(
         short,
         long,
-        default_value_t = 0.1,
+        default_value_t = 0.01,
         help = "Maximum absolut value of cost function, adapt only if alignment fails."
     )]
-    pub cost_max_abs: f64,
+    pub tuning: f64,
+    #[clap(
+        short,
+        long,
+        default_value_t = 10,
+        help = "Half-width of window around maximum of reference frame."
+    )]
+    pub window_size: usize,
 }
 
 impl Transformer for AlignTransform {
@@ -27,37 +34,39 @@ impl Transformer for AlignTransform {
     fn transform(&mut self, dataset: &mut Dataset) -> Result<()> {
         let ref_spectrum: ndarray::ArrayView2<_> = dataset.data.slice(s![.., 0..=1]);
         // Find maximum in reference frame
-        let ref_grid_max = ref_spectrum
+        let Some(idx_ref_max) = ref_spectrum
             .rows()
             .into_iter()
-            .fold((f64::NAN, f64::NAN), |(xmax, ymax), row| {
-                let x = row[0];
+            .enumerate()
+            .fold(None, |acc, (i, row)| {
+                let Some((idx, ymax)) = acc else {
+                    return Some((i, row[1]));
+                };
                 let y = row[1];
-
-                if ymax.is_nan() || y > ymax {
-                    return (x, y);
+                if y > ymax {
+                    return Some((i, y));
                 } else {
-                    return (xmax, ymax);
+                    return Some((idx, ymax));
                 }
             })
-            .0;
+            .map(|(idx, _y)| idx)
+        else {
+            return Err(anyhow!("Unable to identify maximum in reference spectrum."));
+        };
         // Crop reference spectrum
-        let ref_spectrum = crop(ref_spectrum, ref_grid_max);
-
-        dbg!(&ref_spectrum);
+        let ref_spectrum = crop(ref_spectrum, idx_ref_max);
 
         for i in (2..dataset.data.ncols()).step_by(2) {
             let spectrum = dataset.data.slice(s![.., i..=i + 1]);
 
             let problem = OptAlignment {
-                frame_a: ref_spectrum.view(),
+                frame_ref: ref_spectrum.view(),
                 frame_b: spectrum.view(),
                 debug: false,
             };
-            let solver = NelderMead::new(vec![
-                -f64::abs(self.cost_max_abs),
-                f64::abs(self.cost_max_abs),
-            ]);
+            // let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
+            // let solver = argmin::solver::quasinewton::BFGS::new(linesearch);
+            let solver = NelderMead::new(vec![-f64::abs(self.tuning), f64::abs(self.tuning)]);
             let res = Executor::new(problem, solver)
                 .configure(|state| state.param(0.0))
                 .run()?;
@@ -77,7 +86,7 @@ impl Transformer for AlignTransform {
             // };
             // let _ = problem.cost(&dx);
 
-            let shifted_grid = &spectrum.slice(s![.., 0]) + dbg!(dx);
+            let shifted_grid = &spectrum.slice(s![.., 0]) + dx;
             let aligned_frame = linear_resample_array(
                 &shifted_grid,
                 &spectrum.slice(s![.., 1]),
@@ -87,6 +96,14 @@ impl Transformer for AlignTransform {
             for (fr, afr) in frame.iter_mut().zip(aligned_frame.iter()) {
                 *fr = *afr
             }
+            let mut valid_rows: Array2<f64> = Array2::default((0, dataset.data.shape()[1]));
+            for row in dataset.data.axis_iter(Axis(0)) {
+                if row.iter().all(|x| x.is_finite()) {
+                    valid_rows.push_row(row)?
+                }
+            }
+
+            dataset.data = valid_rows;
         }
         Ok(())
     }
@@ -105,26 +122,24 @@ impl Transformer for AlignTransform {
     }
 }
 
-fn crop(ref_spectrum: ArrayView2<f64>, ref_grid_max: f64) -> Array2<f64> {
-    let idx: ndarray::Array1<_> = ref_spectrum
+fn crop(spectrum: ArrayView2<f64>, idx: usize) -> Array2<f64> {
+    spectrum
         .axis_iter(Axis(0))
         .enumerate()
         .filter_map(|(i, row)| {
-            // TODO remove these hard coded bounds (0.5)
-            if row[0] > ref_grid_max - 0.5 && row[0] < ref_grid_max + 0.5 {
-                Some(i)
+            // TODO remove these hard coded bounds
+            if i >= idx - 10 && i <= idx + 10 {
+                Some([row[0], row[1]])
             } else {
                 None
             }
         })
-        .collect();
-    ref_spectrum
-        .slice(s![idx[0]..idx[idx.len() - 1], ..])
-        .into_owned()
+        .collect::<Vec<_>>()
+        .into()
 }
 
 struct OptAlignment<'a> {
-    frame_a: ArrayView2<'a, f64>,
+    frame_ref: ArrayView2<'a, f64>,
     frame_b: ArrayView2<'a, f64>,
     debug: bool,
 }
@@ -137,9 +152,9 @@ impl<'a> CostFunction for OptAlignment<'a> {
         let mut iter_b = self.frame_b.axis_iter(Axis(0)).peekable();
         let mut sum = 0.0;
         for (rowi, rowj) in self
-            .frame_a
+            .frame_ref
             .axis_iter(Axis(0))
-            .zip(self.frame_a.axis_iter(Axis(0)).skip(1))
+            .zip(self.frame_ref.axis_iter(Axis(0)).skip(1))
         {
             let (xi, yi, xj, yj) = (rowi[0], rowi[1], rowj[0], rowj[1]);
             if self.debug {
@@ -169,5 +184,82 @@ impl<'a> CostFunction for OptAlignment<'a> {
             }
         }
         Ok(sum.sqrt())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use argmin::core::CostFunction;
+    use ndarray::array;
+
+    #[test]
+    fn test_cost_function() {
+        // --- Setup Data ---
+
+        // Frame A (Reference): A simple line from x=0 to x=4
+        // y = x
+        let frame_ref = array![[1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0],];
+
+        // A fixed shift along x we use for this test.
+        let shift = 0.5;
+
+        // Frame B (Target): The same line, but shifted w.r.t the x axis.
+        let frame_b = array![
+            [0.0, 0.0 + shift],
+            [1.0, 1.0 + shift],
+            [2.0, 2.0 + shift],
+            [3.0, 3.0 + shift],
+            [4.0, 4.0 + shift],
+            [5.0, 5.0 + shift],
+        ];
+
+        let problem = OptAlignment {
+            frame_ref: frame_ref.view(),
+            frame_b: frame_b.view(),
+            debug: false,
+        };
+
+        // --- Test 1: Optimal Alignment ---
+        // We expect the cost to be 0.0 when `param` == `shift`
+        let cost_optimal = problem.cost(&shift).unwrap();
+
+        println!("Cost at optimal param ({}): {}", shift, cost_optimal);
+        assert!(
+            cost_optimal == 0.0,
+            "Cost should be zero at optimal alignment, is {}",
+            cost_optimal
+        );
+
+        // --- Test 2: Misalignment ---
+        // If we use param = 0.0, the lines are offset. Cost should be higher.
+        let bad_param = 0.0;
+        let cost_bad = problem.cost(&bad_param).unwrap();
+
+        println!("Cost at bad param (0.0): {}", cost_bad);
+        assert!(
+            cost_bad > cost_optimal,
+            "Cost should be higher when misaligned (optimal cost = {}, misaligned cost = {})",
+            cost_optimal,
+            cost_bad
+        );
+
+        // --- Test 3: Minimization ---
+        let solver = NelderMead::new(vec![-1.5, 0.0]);
+        let executor = Executor::new(problem, solver);
+        let result = executor.run().unwrap();
+
+        println!("Result: {:?}", result.state);
+
+        let best_param = result.state.best_param.unwrap();
+        assert!(
+            (best_param - shift).abs() < 1e-9,
+            "Expected param approx {}, got {}",
+            shift,
+            best_param
+        );
+
+        // The final cost should be very low
+        assert!(result.state.best_cost < 1e-9, "Cost should be near zero");
     }
 }

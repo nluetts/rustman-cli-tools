@@ -632,7 +632,10 @@ impl RamanGuiApp {
         let trnsf: Box<dyn TransformerGUI> = match &self.insert_transformer {
             // REGISTER
             InsertTransformer::None => return,
-            InsertTransformer::Align => Box::new(AlignTransform { cost_max_abs: 0.1 }),
+            InsertTransformer::Align => Box::new(AlignTransform {
+                tuning: 0.01,
+                window_size: 10,
+            }),
             InsertTransformer::Append => Box::new(AppendTransform {
                 filepath: Some(PathBuf::from("")),
                 delimiter: ',',
@@ -876,7 +879,8 @@ pub trait TransformerGUI: Transformer {
 impl TransformerGUI for AlignTransform {
     fn render_form(&mut self, ui: &mut Ui) -> () {
         ui.heading("Align");
-        ui.add(Slider::new(&mut self.cost_max_abs, 0.01..=1.0).text("tuning parameter"));
+        ui.add(Slider::new(&mut self.tuning, 0.001..=0.1).text("tuning parameter"));
+        ui.add(Slider::new(&mut self.window_size, 1..=50).text("window size"));
     }
 }
 
