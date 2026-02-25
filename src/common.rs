@@ -466,9 +466,9 @@ impl Pipeline {
                     }
                     if line.starts_with("# ") {
                         // Uncomment one level
-                        Some(line[2..].trim())
+                        Some(&line[2..])
                     } else {
-                        Some(line.trim())
+                        Some(&line)
                     }
                 })
                 .fold(String::new(), |mut acc, next| {
