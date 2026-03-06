@@ -2,9 +2,9 @@ use crate::common::Dataset;
 use crate::transformations::Transformer;
 use anyhow::Result;
 use clap::Parser;
-use ndarray::{s, Array1, Axis};
-use ndarray_stats::interpolate::Nearest;
+use ndarray::{Array1, Axis, s};
 use ndarray_stats::QuantileExt;
+use ndarray_stats::interpolate::Nearest;
 use noisy_float::prelude::n64;
 use serde::{Deserialize, Serialize};
 
@@ -47,12 +47,12 @@ impl Transformer for FinningTransform {
                     Err(err) => return Err(anyhow::Error::from(err)),
                 };
             let mut intensities_std = intensities_buffer.std(1.0);
-            let mut n = match row.argmax() {
+            let mut n = match row.mapv(|val| (val - intensities_median).abs()).argmax() {
                 Ok(index) => index,
                 Err(err) => return Err(anyhow::Error::from(err)),
             };
             let mut iterations: usize = 0;
-            while row[n] > intensities_median + self.threshold * intensities_std {
+            while (row[n] - intensities_median).abs() > self.threshold * intensities_std {
                 iterations += 1;
                 row[n] = intensities_median;
                 intensities_buffer.assign(&row);
@@ -63,7 +63,7 @@ impl Transformer for FinningTransform {
                         Err(err) => return Err(anyhow::Error::from(err)),
                     };
                 intensities_std = intensities_buffer.std(1.0);
-                n = match row.argmax() {
+                n = match row.mapv(|val| (val - intensities_median).abs()).argmax() {
                     Ok(index) => index,
                     Err(err) => return Err(anyhow::Error::from(err)),
                 };
