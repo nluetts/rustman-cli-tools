@@ -3,7 +3,6 @@ use std::{
     error::Error,
     fs::File,
     io::{BufWriter, Read, Seek, SeekFrom, Write},
-    os::unix::fs::FileExt,
     path::Path,
 };
 
@@ -41,7 +40,8 @@ impl SpeData {
         //
         // Read start byte of footer
         let mut buf = [0u8; 8];
-        file.read_at(&mut buf, 678)?;
+        file.seek(SeekFrom::Start(678))?;
+        file.read(&mut buf)?;
         let xml_offset = u64::from_le_bytes(buf);
         // Read footer into bytes
         file.seek(SeekFrom::Start(xml_offset))?;
