@@ -38,6 +38,7 @@ use crate::{
         offset::OffsetTransform,
         reshape::ReshapeTransform,
         roi::RoiTransform,
+        roi_avg::RoiAverageTransform,
         select::SelectTransform,
         shift::RamanShiftTransform,
         subtract::SubtractTransform,
@@ -249,7 +250,16 @@ impl RamanGuiApp {
                     InsertTransformer::Reshape,
                     "Reshape",
                 );
-                ui.selectable_value(&mut self.insert_transformer, InsertTransformer::Roi, "ROI");
+                ui.selectable_value(
+                    &mut self.insert_transformer,
+                    InsertTransformer::RoiAverage,
+                    "ROI Averaging",
+                );
+                ui.selectable_value(
+                    &mut self.insert_transformer,
+                    InsertTransformer::Roi,
+                    "ROI Selection",
+                );
                 ui.selectable_value(
                     &mut self.insert_transformer,
                     InsertTransformer::Select,
@@ -711,6 +721,7 @@ impl RamanGuiApp {
                 roi: 1,
                 num_rois: 3,
             }),
+            InsertTransformer::RoiAverage => Box::new(RoiAverageTransform { num_rois: 3 }),
             InsertTransformer::Select => Box::new(SelectTransform {
                 frames: vec![],
                 invert: true,
@@ -858,6 +869,7 @@ enum InsertTransformer {
     Offset,
     RamanShift,
     Roi,
+    RoiAverage,
     Reshape,
     Select,
     Subtract,
@@ -1194,6 +1206,19 @@ impl TransformerGUI for RoiTransform {
             egui::DragValue::new(&mut self.roi)
                 .speed(1)
                 .clamp_range(1..=self.num_rois),
+        );
+    }
+}
+
+impl TransformerGUI for RoiAverageTransform {
+    fn render_form(&mut self, ui: &mut Ui) -> () {
+        ui.heading("Select ROI");
+        ui.label("Number of ROIs");
+
+        ui.add(
+            egui::DragValue::new(&mut self.num_rois)
+                .speed(1)
+                .clamp_range(1..=99),
         );
     }
 }

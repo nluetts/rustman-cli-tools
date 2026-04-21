@@ -6,8 +6,8 @@ use crate::transformations::{
     count_conversion::CountConversionTransform, despike::DespikeTransform,
     draw_baseline::DrawBaselineTransform, finning::FinningTransform, integrate::IntegrateTransform,
     mask_pixels::MaskTransform, normalize::NormalizeTransform, offset::OffsetTransform,
-    reshape::ReshapeTransform, roi::RoiTransform, select::SelectTransform,
-    shift::RamanShiftTransform, subtract::SubtractTransform,
+    reshape::ReshapeTransform, roi::RoiTransform, roi_avg::RoiAverageTransform,
+    select::SelectTransform, shift::RamanShiftTransform, subtract::SubtractTransform,
 };
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
@@ -66,6 +66,8 @@ pub enum Commands {
     Reshape(ReshapeTransform),
     /// Select specific ROI
     Roi(RoiTransform),
+    /// Average ROIs from single exposure.
+    RoiAvg(RoiAverageTransform),
     /// Calculate Raman shift.
     Shift(RamanShiftTransform),
     /// Subtract frame from other frames.
@@ -78,7 +80,7 @@ pub enum Commands {
     GUI,
 }
 
-const COMMANDS: [&str; 20] = [
+const COMMANDS: [&str; 21] = [
     // REGISTER: new transformers must get entry here.
     "align",
     "append",
@@ -97,6 +99,7 @@ const COMMANDS: [&str; 20] = [
     "plot",
     "reshape",
     "roi",
+    "roi-avg",
     "select",
     "shift",
     "subtract",

@@ -13,6 +13,7 @@ pub mod normalize;
 pub mod offset;
 pub mod reshape;
 pub mod roi;
+pub mod roi_avg;
 pub mod select;
 pub mod shift;
 pub mod subtract;

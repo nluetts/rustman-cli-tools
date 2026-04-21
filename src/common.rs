@@ -2,6 +2,7 @@ use crate::gui::TransformerGUI;
 use crate::spe_rs::SpeData;
 use crate::transformations::calibration::CalibrationTransform;
 use crate::transformations::offset::OffsetIOBuffers;
+use crate::transformations::roi_avg::RoiAverageTransform;
 use crate::transformations::{
     align::AlignTransform, append::AppendTransform, average::AverageTransform,
     baseline::BaselineTransform, count_conversion::CountConversionTransform,
@@ -10,14 +11,13 @@ use crate::transformations::{
     reshape::ReshapeTransform, roi::RoiTransform, select::SelectTransform,
     shift::RamanShiftTransform, subtract::SubtractTransform,
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use csv::ReaderBuilder;
 use egui_plot::PlotPoints;
-use ndarray::{Array2, ArrayBase, Axis, Ix1, ViewRepr, array};
+use ndarray::{array, Array2, ArrayBase, Axis, Ix1, ViewRepr};
 use ndarray_csv::Array2Reader;
 use regex::Regex;
-use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::Display;
@@ -384,6 +384,7 @@ fn yaml_segment_to_transform(segment: &String) -> Result<Box<dyn TransformerGUI>
         RamanShiftTransform,
         ReshapeTransform,
         RoiTransform,
+        RoiAverageTransform,
         SelectTransform,
         SubtractTransform
     )
@@ -426,6 +427,9 @@ impl Pipeline {
                         transformations.push(Box::new(ReshapeTransform::parse_from(subargs)))
                     }
                     "roi" => transformations.push(Box::new(RoiTransform::parse_from(subargs))),
+                    "roi-avg" => {
+                        transformations.push(Box::new(RoiAverageTransform::parse_from(subargs)))
+                    }
                     "select" => {
                         transformations.push(Box::new(SelectTransform::parse_from(subargs)))
                     }
