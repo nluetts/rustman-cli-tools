@@ -96,8 +96,7 @@ fn spawn_file_loader_thread(
                         let dir = fp.parent().unwrap_or(std::path::Path::new(""));
                         if let Some(output_filepath) = rfd::FileDialog::new()
                             .set_directory(dir)
-                            .add_filter("CSV", &["csv"])
-                            .add_filter("SPE", &["spe"])
+                            .add_filter("LightField Spectra", &["csv", "spe"])
                             .pick_file()
                         {
                             let _result = tx_output_path.send(output_filepath);
