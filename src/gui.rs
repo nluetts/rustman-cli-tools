@@ -1211,7 +1211,7 @@ impl TransformerGUI for RoiTransform {
 
 impl TransformerGUI for RoiAverageTransform {
     fn render_form(&mut self, ui: &mut Ui) -> () {
-        ui.heading("Select ROI");
+        ui.heading("Co-Average ROIs");
         ui.label("Number of ROIs");
 
         ui.add(
