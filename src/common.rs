@@ -11,11 +11,11 @@ use crate::transformations::{
     reshape::ReshapeTransform, roi::RoiTransform, select::SelectTransform,
     shift::RamanShiftTransform, subtract::SubtractTransform,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use csv::ReaderBuilder;
 use egui_plot::PlotPoints;
-use ndarray::{array, Array2, ArrayBase, Axis, Ix1, ViewRepr};
+use ndarray::{Array2, ArrayBase, Axis, Ix1, ViewRepr, array};
 use ndarray_csv::Array2Reader;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -499,10 +499,10 @@ impl Pipeline {
 
 pub fn default_transformations() -> Vec<Box<dyn TransformerGUI>> {
     let mut transformations: Vec<Box<dyn TransformerGUI>> = vec![];
-    transformations.push(Box::new(ReshapeTransform { rows: 1340 }));
+    // transformations.push(Box::new(ReshapeTransform { rows: 1340 }));
     transformations.push(Box::new(FinningTransform {
-        threshold: 2.5,
-        iterations: 4,
+        threshold: 3.0,
+        iterations: 100,
     }));
     transformations.push(Box::new(AverageTransform {}));
     transformations.push(Box::new(OffsetTransform {
