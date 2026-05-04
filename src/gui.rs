@@ -663,8 +663,8 @@ impl RamanGuiApp {
                 flim: 10.0,
             }),
             InsertTransformer::Finning => Box::new(FinningTransform {
-                threshold: 2.5,
-                iterations: 4,
+                threshold: 3.0,
+                iterations: 100,
             }),
             InsertTransformer::Integrate => Box::new(IntegrateTransform {
                 bounds: vec![],
