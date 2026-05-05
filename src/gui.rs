@@ -16,7 +16,7 @@ use sha256::digest;
 
 use crate::{
     cli::Preprocessor,
-    common::{Dataset, Pair, Pipeline, default_transformations},
+    common::{Dataset, Pair, Pipeline, default_transformations, locate_file_interactive},
     gui_plot_extensions::{
         IntegrateExtensionGUI, MaskExtensionGUI, NormalizeExtensionGUI, PlotExtensionGUI,
         PlotExtensionResult, SplineExtensionGUI,
@@ -573,6 +573,7 @@ impl RamanGuiApp {
                 self.dataset = cache.clone();
             } else {
                 if let Err(err) = trnsf.apply(&mut self.dataset) {
+                    trnsf.on_error(&err);
                     self.error_messages.push_front(err.to_string());
                     break;
                 }
@@ -885,6 +886,7 @@ pub trait TransformerGUI: Transformer {
     fn should_plot_dataset_state_after_transformation(&self) -> bool {
         true
     }
+    fn on_error(&mut self, _err: &anyhow::Error) {}
 }
 
 impl TransformerGUI for AlignTransform {
@@ -900,11 +902,25 @@ impl TransformerGUI for AppendTransform {
         ui.heading("Append File");
         let mut fp = match &self.filepath {
             None => "".to_owned(),
-            Some(fp) => format!("{}", fp.display()),
+            Some(fp) => {
+                format!("{}", fp.display())
+            }
         };
         ui.text_edit_singleline(&mut fp);
         self.filepath = Some(PathBuf::from(fp));
         ui.checkbox(&mut self.horizontal, "as new rows?");
+        // UI to show if appended file could not be located
+        if self.filepath.as_ref().is_some_and(|fp| !fp.exists()) {
+            let locate_button = egui::Button::new("Locate file ...").fill(egui::Color32::DARK_RED);
+            if locate_button.ui(ui).clicked() {
+                if let Some(path) = locate_file_interactive(self.filepath.as_ref().unwrap()) {
+                    self.filepath = Some(path);
+                };
+            }
+        }
+    }
+    fn on_error(&mut self, err: &anyhow::Error) {
+        eprintln!("ApplyTransformation failed: {err}");
     }
 }
 

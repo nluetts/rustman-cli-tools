@@ -1,4 +1,4 @@
-use crate::common::{Dataset, Pipeline};
+use crate::common::{Dataset, Pipeline, locate_file_interactive};
 use crate::plot::PlotTransform;
 use crate::transformations::calibration::CalibrationTransform;
 use crate::transformations::{
@@ -142,10 +142,19 @@ impl Preprocessor {
             gui_mode,
             reload_pipeline,
         };
-        if prp.args.filepath.is_some() {
+        if prp.args.filepath.as_ref().is_some_and(|fp| fp.exists()) {
             prp.args.filepath = Some(prp.args.filepath.unwrap().canonicalize().unwrap());
         }
         prp
+    }
+
+    pub fn maybe_locate_input_file(&mut self) -> Result<()> {
+        if let Some(ref filepath) = self.args.filepath {
+            if !filepath.exists() {
+                self.args.filepath = locate_file_interactive(filepath);
+            }
+        }
+        Ok(())
     }
 
     pub fn get_input_data(&mut self) -> Result<Dataset> {
@@ -204,11 +213,15 @@ impl Preprocessor {
 
         let args = serde_yaml::from_str::<Cli>(&preprocessor_yaml)
             .with_context(|| format!("Offending YAML input:\n{}", preprocessor_yaml))?;
-        Ok(Self {
+        let mut prp = Self {
             args,
             subcommand_args: None,
             gui_mode,
             reload_pipeline: false,
-        })
+        };
+        if let Err(e) = prp.maybe_locate_input_file() {
+            eprintln!("{e}");
+        }
+        Ok(prp)
     }
 }

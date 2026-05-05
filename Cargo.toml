@@ -29,3 +29,4 @@ serde_yaml = "0.9.4"
 sha256 = "1.1"
 splines = "4.1"
 image = { version = "0.25.1", features = ["png"], default-features = false }
+walkdir = "2.5.0"

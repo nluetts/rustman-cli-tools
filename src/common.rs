@@ -23,6 +23,7 @@ use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone, Copy)]
@@ -523,6 +524,33 @@ pub fn default_transformations() -> Vec<Box<dyn TransformerGUI>> {
     transformations.push(Box::new(rst));
     transformations.push(Box::new(CountConversionTransform::default()));
     transformations
+}
+
+pub fn locate_file_interactive(filepath: &PathBuf) -> Option<PathBuf> {
+    eprintln!("Looking for file {:?}", filepath);
+    let mut file_name = filepath.file_name()?.to_string_lossy().to_string();
+
+    // Handle Windows paths by extracting just the filename
+    if let Some((_, fname)) = file_name.rsplit_once('\\') {
+        file_name = fname.to_string();
+    }
+
+    let root_path = rfd::FileDialog::new()
+        .set_title("Missing input file, please set search path to locate file.")
+        .pick_folder()?;
+
+    walkdir::WalkDir::new(root_path)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .find(|entry| {
+            entry.metadata().map_or(false, |m| {
+                m.is_file() && entry.file_name().to_str() == Some(&file_name)
+            })
+        })
+        .map(|entry| {
+            eprintln!("Found {entry:?}");
+            entry.into_path()
+        })
 }
 
 #[cfg(test)]
