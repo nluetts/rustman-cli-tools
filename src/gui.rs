@@ -138,8 +138,10 @@ impl eframe::App for RamanGuiApp {
         // Re-run data pipeline, if hash of pipeline configuration changed
         if let Err(e) = self.run_pipeline_on_change() {
             // error_message is reset by run_pipeline_on_change, if it runs through
-            self.error_messages
-                .push_front(format!("Could not run pipeline: {e}"));
+            self.error_messages.push_front(format!(
+                "{} Could not run pipeline: {e}",
+                chrono::Local::now().to_rfc3339()
+            ));
         }
         // put forms for transformers into side panel
         self.left_panel(ctx);
@@ -574,7 +576,11 @@ impl RamanGuiApp {
             } else {
                 if let Err(err) = trnsf.apply(&mut self.dataset) {
                     trnsf.on_error(&err);
-                    self.error_messages.push_front(err.to_string());
+                    self.error_messages.push_front(format!(
+                        "{} {}",
+                        chrono::Local::now().format("[%H:%M:%S]"),
+                        err.to_string()
+                    ));
                     break;
                 }
                 self.dataset_cache
