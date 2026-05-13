@@ -18,8 +18,8 @@ use crate::{
     cli::Preprocessor,
     common::{Dataset, Pair, Pipeline, default_transformations, locate_file_interactive},
     gui_plot_extensions::{
-        IntegrateExtensionGUI, MaskExtensionGUI, NormalizeExtensionGUI, PlotExtensionGUI,
-        PlotExtensionResult, SplineExtensionGUI,
+        CalibrationExtensionGUI, IntegrateExtensionGUI, MaskExtensionGUI, NormalizeExtensionGUI,
+        PlotExtensionGUI, PlotExtensionResult, SplineExtensionGUI,
     },
     plot::PALETTE,
     transformations::{
@@ -963,6 +963,9 @@ impl TransformerGUI for BaselineTransform {
 impl TransformerGUI for CalibrationTransform {
     fn render_form(&mut self, ui: &mut Ui) -> () {
         ui.heading("Calibration");
+        let label = ui.label("Polynomial order");
+        ui.add(egui::DragValue::new(&mut self.order).speed(1))
+            .labelled_by(label.id);
         let mut remove: Option<usize> = None;
         for (i, pair) in self.points.iter_mut().enumerate() {
             ui.label(format!("point {}:", i + 1));
@@ -982,6 +985,26 @@ impl TransformerGUI for CalibrationTransform {
         ui.separator();
         if ui.button("+").clicked() {
             self.points.push(Pair { a: 1.0, b: 1.0 });
+        }
+    }
+
+    fn should_plot_dataset_state_after_transformation(&self) -> bool {
+        false
+    }
+
+    fn get_plot_extension(&self, _ds: Dataset) -> Option<Box<dyn PlotExtensionGUI>> {
+        let ext = CalibrationExtensionGUI::new(self.points.clone());
+        Some(Box::new(ext))
+    }
+
+    fn update_from_plot_extension(&mut self, ext: PlotExtensionResult) -> () {
+        match ext {
+            PlotExtensionResult::Spline(points) => self.points = points,
+            _ => {
+                panic!(
+                    "Calibration transformer got wrong plot extension result. This should not have happened, please file an issue."
+                )
+            }
         }
     }
 }

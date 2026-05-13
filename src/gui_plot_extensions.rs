@@ -1,5 +1,5 @@
 use egui::{Color32, Ui};
-use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Points};
+use egui_plot::{Line, PlotPoint, PlotPoints, PlotUi, Points, VLine};
 use noisy_float::{prelude::Float, types::N64};
 use splines::{Key, Spline};
 
@@ -516,5 +516,73 @@ impl PlotExtensionGUI for NormalizeExtensionGUI {
     }
     fn is_pan_allowed(&self) -> bool {
         false
+    }
+}
+
+// ---- CalibrationExtension --------------------------------------------------
+
+/// Draw calibration points and allow adding new points
+#[derive(Debug)]
+pub struct CalibrationExtensionGUI {
+    pub is_active: bool,
+    pub points: Vec<Pair<f64>>,
+}
+
+impl CalibrationExtensionGUI {
+    pub fn new(points: Vec<Pair<f64>>) -> Self {
+        Self {
+            is_active: true,
+            points,
+        }
+    }
+}
+
+impl PlotExtensionGUI for CalibrationExtensionGUI {
+    fn modify_plot(&mut self, plot_ui: &mut PlotUi) {
+        // Draw vertical lines at calibration points
+        for pair in &self.points {
+            plot_ui.vline(VLine::new(pair.a).color(Color32::from_rgb(255, 0, 0)));
+        }
+
+        if !self.is_active {
+            return;
+        }
+
+        // Handle right-click to add new point
+        if plot_ui.response().clicked() {
+            if let Some(point) = plot_ui.pointer_coordinate() {
+                self.points.push(Pair {
+                    a: point.x,
+                    b: point.x,
+                });
+            }
+        }
+
+        if plot_ui.response().secondary_clicked() {
+            if let Some(point) = plot_ui.pointer_coordinate() {
+                let mut remove_point_index: (Option<usize>, f64) = (None, f64::INFINITY);
+                for (i, Pair { a: x, b: _ }) in self.points.iter().enumerate() {
+                    let delta = (point.x - x).abs();
+                    if delta < remove_point_index.1 {
+                        remove_point_index = (Some(i), delta)
+                    }
+                }
+                if let Some(idx) = remove_point_index.0 {
+                    self.points.remove(idx);
+                }
+            }
+        }
+    }
+
+    fn get_extension_result(&self) -> PlotExtensionResult {
+        PlotExtensionResult::Spline(self.points.clone())
+    }
+
+    fn get_is_active_reference(&mut self) -> &mut bool {
+        &mut self.is_active
+    }
+
+    fn extension_toggle_label(&self) -> String {
+        "Calibration Mode".to_owned()
     }
 }

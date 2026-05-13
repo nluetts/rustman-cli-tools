@@ -1,14 +1,19 @@
 use crate::common::{Dataset, Pair};
 use crate::transformations::Transformer;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::Parser;
+use ndarray::{ArrayBase, Dim, ViewRepr};
+use ndarray_linalg::LeastSquaresSvd;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, Parser, Serialize, Deserialize)]
+#[derive(Debug, Parser, Serialize, Deserialize)]
 #[serde(tag = "transformation")]
 pub struct CalibrationTransform {
     #[clap(short, long, help = "x,y reference data points for calibration.")]
     pub(crate) points: Vec<Pair<f64>>,
+    #[clap(short, long, help = "order of polynomial fit")]
+    pub(crate) order: usize,
+    coefficients: Vec<f64>,
 }
 
 impl Transformer for CalibrationTransform {
@@ -16,47 +21,60 @@ impl Transformer for CalibrationTransform {
         serde_yaml::to_string(&self).map_err(anyhow::Error::msg)
     }
     fn transform(&mut self, dataset: &mut Dataset) -> Result<()> {
-        if let Some((slope, intercept)) = linregress(&self.points) {
-            // Iterate over all x-axes
-            for xs in dataset.data.axis_iter_mut(ndarray::Axis(1)).step_by(2) {
-                for x in xs {
-                    *x = *x * slope + intercept
-                }
-            }
+        self.fit()?;
+        // Iterate over all x-axes
+        for xs in dataset.data.axis_iter_mut(ndarray::Axis(1)).step_by(2) {
+            self.eval_inplace(xs);
         }
         Ok(())
     }
 }
 
-fn linregress(pts: &[Pair<f64>]) -> Option<(f64, f64)> {
-    // Zero reference points cannot be processed.
-    if pts.len() == 0 {
-        return None;
+impl CalibrationTransform {
+    fn fit(&mut self) -> Result<()> {
+        let m = self.points.len();
+        if m == 0 || m - 1 < self.order {
+            return Err(anyhow!(
+                "Not enough anchor points to perform fit of order {} ({})",
+                self.order,
+                self.points.len()
+            ));
+        }
+
+        // Perform polyfit via Vandermonde Matrix
+        let mut vandermonde = ndarray::Array2::ones((self.points.len(), self.order + 1));
+        let mut ys = ndarray::Array1::ones(self.points.len());
+        for (i, (x, y)) in self.points.iter().map(|p| (p.a, p.b)).enumerate() {
+            ys[i] = y;
+            for k in 1..=self.order {
+                vandermonde[[i, k]] = x.powi(k as i32)
+            }
+        }
+
+        self.coefficients.clear();
+        for c in vandermonde.least_squares(&ys)?.solution {
+            self.coefficients.push(c);
+        }
+        Ok(())
     }
 
-    // One point can be used to figure out an offset.
-    if pts.len() == 1 {
-        let Pair { a, b } = pts.iter().nth(0).unwrap();
-        return Some((1.0, b - a));
+    fn eval_inplace(&self, mut xs: ArrayBase<ViewRepr<&mut f64>, Dim<[usize; 1]>>) {
+        for x in xs.iter_mut() {
+            let mut x_cal = 0.0;
+            for (n, c) in self.coefficients.iter().enumerate() {
+                x_cal += c * x.powi(n as i32)
+            }
+            *x = x_cal;
+        }
     }
+}
 
-    // More than one points can be used to estimate a slope and intercept.
-    let mean_x = pts.iter().map(|Pair { a, b: _ }| a).sum::<f64>() / (pts.len() as f64);
-    let mean_y = pts.iter().map(|Pair { a: _, b }| b).sum::<f64>() / (pts.len() as f64);
-
-    let slope = {
-        let numerator: f64 = pts
-            .iter()
-            .map(|Pair { a, b }| (a - mean_x) * (b - mean_y))
-            .sum();
-        let denominator: f64 = pts
-            .iter()
-            .map(|Pair { a, b: _ }| (a - mean_x).powi(2))
-            .sum();
-        numerator / denominator
-    };
-
-    let intercept = mean_y - slope * mean_x;
-
-    Some((slope, intercept))
+impl Default for CalibrationTransform {
+    fn default() -> Self {
+        Self {
+            points: Default::default(),
+            order: 1,
+            coefficients: Default::default(),
+        }
+    }
 }

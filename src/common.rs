@@ -589,7 +589,6 @@ mod tests {
         for yaml_input in commands_yaml.clone() {
             if yaml_input.contains("FinningTransform") {
                 let transform: FinningTransform = serde_yaml::from_str(&yaml_input).unwrap();
-                dbg!(transform);
             }
         }
         assert_eq!(commands_yaml, vec!["foo".to_string()]);
