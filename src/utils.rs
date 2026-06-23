@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Result};
-use ndarray::{array, Array1, ArrayBase, Data, Ix1};
+use anyhow::{Result, anyhow};
+use ndarray::{Array1, ArrayBase, Data, Ix1, array};
 use std::cmp::Ordering::Greater;
 
 /// Calculate area of single trapezoid.
@@ -191,6 +191,255 @@ mod tests {
         let xs = ndarray::array![1., 2., 3., 4., 5.];
         let ys = ndarray::array![1., 2., 3., 4., 5.];
         let grid = ndarray::array![1.5, 2.5, 2.0, 5.0]; // TODO: 5.0 should also be interpolated
-        let res = linear_resample_array(&xs, &ys, &grid);
+        let _res = linear_resample_array(&xs, &ys, &grid);
+    }
+}
+
+// Polynomial least-squares fitting implementation developed with assistance
+// from OpenAI GPT-5.5
+pub mod polyfit {
+    use anyhow::{Result, anyhow, bail};
+    use ndarray_linalg::LeastSquaresSvd;
+
+    pub fn fit(xs: &[f64], ys: &[f64], degree: usize) -> Result<Vec<f64>> {
+        let m = xs.len();
+
+        if m != ys.len() {
+            bail!("x and y must be of same length, got {}, {}", m, ys.len());
+        }
+
+        let cols = degree
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("polynomial degree is too large"))?;
+
+        if m < cols {
+            bail!(
+                "not enough points to fit polynomial of degree {}: need at least {}, got {}",
+                degree,
+                cols,
+                m
+            );
+        }
+
+        if xs.iter().chain(ys.iter()).any(|v| !v.is_finite()) {
+            bail!("x and y values must all be finite");
+        }
+
+        let mean = xs.iter().sum::<f64>() / m as f64;
+
+        // Scale by maximum absolute deviation from the mean.
+        // This maps the x-values roughly into [-1, 1].
+        let scale = xs.iter().map(|&x| (x - mean).abs()).fold(0.0_f64, f64::max);
+
+        if scale == 0.0 && degree > 0 {
+            bail!(
+                "cannot fit polynomial of degree {} when all x values are equal",
+                degree
+            );
+        }
+
+        // For degree 0 with constant x, any nonzero scale works.
+        let scale = if scale == 0.0 { 1.0 } else { scale };
+
+        // Build Vandermonde matrix using normalized x:
+        //
+        // z = (x - mean) / scale
+        //
+        // [1, z, z^2, ..., z^degree]
+        let mut vandermonde = ndarray::Array2::<f64>::zeros((m, cols));
+
+        for (i, &x) in xs.iter().enumerate() {
+            let z = (x - mean) / scale;
+            let mut z_pow = 1.0;
+
+            for j in 0..cols {
+                vandermonde[(i, j)] = z_pow;
+                z_pow *= z;
+            }
+        }
+
+        let y = ndarray::Array1::from_vec(ys.to_vec());
+
+        // Coefficients for normalized coordinate z:
+        //
+        // y = a[0] + a[1] z + a[2] z^2 + ...
+        let normalized_coefficients = vandermonde.least_squares(&y)?.solution;
+
+        // Convert coefficients from powers of z back to powers of x.
+        //
+        // z = (x - mean) / scale
+        //
+        // a[j] z^j = a[j] ((x - mean) / scale)^j
+        //
+        // Expanding this gives coefficients for:
+        //
+        // y = c[0] + c[1] x + c[2] x^2 + ...
+        let coefficients =
+            denormalize_coefficients(normalized_coefficients.as_slice().unwrap(), mean, scale);
+
+        Ok(coefficients)
+    }
+
+    fn denormalize_coefficients(normalized: &[f64], mean: f64, scale: f64) -> Vec<f64> {
+        let degree = normalized.len() - 1;
+        let mut coefficients = vec![0.0; normalized.len()];
+
+        let mut neg_mean_powers = vec![1.0; degree + 1];
+        for i in 1..=degree {
+            neg_mean_powers[i] = neg_mean_powers[i - 1] * -mean;
+        }
+
+        let inv_scale = 1.0 / scale;
+        let mut inv_scale_powers = vec![1.0; degree + 1];
+        for i in 1..=degree {
+            inv_scale_powers[i] = inv_scale_powers[i - 1] * inv_scale;
+        }
+
+        for j in 0..=degree {
+            let factor = normalized[j] * inv_scale_powers[j];
+
+            for k in 0..=j {
+                coefficients[k] += factor * binomial(j, k) * neg_mean_powers[j - k];
+            }
+        }
+
+        coefficients
+    }
+
+    fn binomial(n: usize, k: usize) -> f64 {
+        let k = k.min(n - k);
+
+        let mut result = 1.0;
+
+        for i in 1..=k {
+            result *= (n + 1 - i) as f64;
+            result /= i as f64;
+        }
+
+        result
+    }
+    #[cfg(test)]
+    mod tests {
+        use super::fit;
+
+        fn assert_close(actual: f64, expected: f64, tol: f64) {
+            assert!(
+                (actual - expected).abs() <= tol,
+                "expected {expected}, got {actual}, diff = {}",
+                (actual - expected).abs()
+            );
+        }
+
+        fn assert_coeffs_close(actual: &[f64], expected: &[f64], tol: f64) {
+            assert_eq!(
+                actual.len(),
+                expected.len(),
+                "coefficient length mismatch: expected {}, got {}",
+                expected.len(),
+                actual.len()
+            );
+
+            for (i, (&a, &e)) in actual.iter().zip(expected).enumerate() {
+                assert!(
+                    (a - e).abs() <= tol,
+                    "coefficient {i}: expected {e}, got {a}, diff = {}",
+                    (a - e).abs()
+                );
+            }
+        }
+
+        fn assert_error_contains<T>(result: anyhow::Result<T>, expected: &str)
+        where
+            T: std::fmt::Debug,
+        {
+            let err = result.expect_err("expected error, got Ok");
+            let msg = err.to_string();
+
+            assert!(
+                msg.contains(expected),
+                "expected error to contain {expected:?}, got {msg:?}"
+            );
+        }
+
+        #[test]
+        fn fits_exact_line() -> anyhow::Result<()> {
+            // y = 2 + 3x
+            let xs = [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0];
+            let ys: Vec<f64> = xs.iter().map(|&x| 2.0 + 3.0 * x).collect();
+
+            let coeffs = fit(&xs, &ys, 1)?;
+
+            // Coefficients are returned as:
+            // y = c[0] + c[1] x + ...
+            assert_coeffs_close(&coeffs, &[2.0, 3.0], 1e-10);
+
+            Ok(())
+        }
+
+        #[test]
+        fn fits_exact_quadratic_with_nonzero_mean_x() -> anyhow::Result<()> {
+            // y = 5 - 3x + 0.25x^2
+            //
+            // Using x values away from zero helps exercise the normalization and
+            // denormalization logic.
+            let xs = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
+            let ys: Vec<f64> = xs.iter().map(|&x| 5.0 - 3.0 * x + 0.25 * x * x).collect();
+
+            let coeffs = fit(&xs, &ys, 2)?;
+
+            assert_coeffs_close(&coeffs, &[5.0, -3.0, 0.25], 1e-8);
+
+            Ok(())
+        }
+
+        #[test]
+        fn degree_zero_fit_returns_mean_y() -> anyhow::Result<()> {
+            let xs = [1.0, 2.0, 3.0, 4.0];
+            let ys = [2.0, 4.0, 6.0, 8.0];
+
+            let coeffs = fit(&xs, &ys, 0)?;
+
+            assert_eq!(coeffs.len(), 1);
+            assert_close(coeffs[0], 5.0, 1e-12);
+
+            Ok(())
+        }
+        #[test]
+        fn errors_when_lengths_differ() {
+            let xs = [1.0, 2.0, 3.0];
+            let ys = [1.0, 2.0];
+
+            assert_error_contains(fit(&xs, &ys, 1), "x and y must be of same length");
+        }
+
+        #[test]
+        fn errors_when_not_enough_points() {
+            let xs = [1.0, 2.0];
+            let ys = [3.0, 5.0];
+
+            assert_error_contains(
+                fit(&xs, &ys, 2),
+                "not enough points to fit polynomial of degree 2",
+            );
+        }
+
+        #[test]
+        fn errors_when_x_values_are_all_equal_for_nonconstant_fit() {
+            let xs = [1.0, 1.0, 1.0];
+            let ys = [2.0, 3.0, 4.0];
+
+            assert_error_contains(
+                fit(&xs, &ys, 1),
+                "cannot fit polynomial of degree 1 when all x values are equal",
+            );
+        }
+
+        #[test]
+        fn errors_when_input_contains_nan() {
+            let xs = [1.0, 2.0, f64::NAN];
+            let ys = [2.0, 4.0, 6.0];
+
+            assert_error_contains(fit(&xs, &ys, 1), "x and y values must all be finite");
+        }
     }
 }

@@ -1,9 +1,11 @@
+use core::f64;
+
 use crate::common::{Dataset, Pair};
 use crate::transformations::Transformer;
-use anyhow::{Result, anyhow};
+use crate::utils::polyfit::fit;
+use anyhow::{Result, bail};
 use clap::Parser;
 use ndarray::{ArrayBase, Dim, ViewRepr};
-use ndarray_linalg::LeastSquaresSvd;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser, Serialize, Deserialize)]
@@ -13,6 +15,13 @@ pub struct CalibrationTransform {
     pub(crate) points: Vec<Pair<f64>>,
     #[clap(short, long, help = "order of polynomial fit")]
     pub(crate) order: usize,
+    #[clap(
+        short,
+        long,
+        help = "window in which to calculate centroid to determine peak positions (no centroid if window = 0)"
+    )]
+    #[serde(default)]
+    pub(crate) window: f64,
     coefficients: Vec<f64>,
 }
 
@@ -21,6 +30,15 @@ impl Transformer for CalibrationTransform {
         serde_yaml::to_string(&self).map_err(anyhow::Error::msg)
     }
     fn transform(&mut self, dataset: &mut Dataset) -> Result<()> {
+        if self.window < 0.0 {
+            bail!("Weighting window must be >= 0, got {}", self.window)
+        }
+        if self.window > 0.0 {
+            if dataset.data.columns().into_iter().len() != 2 {
+                bail!("Weighting only works for a single spectrum!")
+            }
+            self.replace_positions_with_centroids(&dataset);
+        }
         self.fit()?;
         // Iterate over all x-axes
         for xs in dataset.data.axis_iter_mut(ndarray::Axis(1)).step_by(2) {
@@ -35,34 +53,43 @@ impl CalibrationTransform {
         Self {
             points: points.to_vec(),
             order,
+            window: 0.0,
             coefficients: Vec::new(),
         }
     }
 
-    pub fn fit(&mut self) -> Result<()> {
-        let m = self.points.len();
-        if m == 0 || m - 1 < self.order {
-            return Err(anyhow!(
-                "Not enough anchor points to perform fit of order {} ({})",
-                self.order,
-                self.points.len()
-            ));
-        }
-
-        // Perform polyfit via Vandermonde Matrix
-        let mut vandermonde = ndarray::Array2::ones((self.points.len(), self.order + 1));
-        let mut ys = ndarray::Array1::ones(self.points.len());
-        for (i, (x, y)) in self.points.iter().map(|p| (p.a, p.b)).enumerate() {
-            ys[i] = y;
-            for k in 1..=self.order {
-                vandermonde[[i, k]] = x.powi(k as i32)
+    /// Replace x-values of `positions` by closest centroids
+    pub fn replace_positions_with_centroids(&mut self, dataset: &Dataset) {
+        for cal_x in self.points.iter_mut().map(|Pair { a, b: _ }| a) {
+            let mut numerator = 0.0;
+            let mut denominator = 0.0;
+            let mut ymin = f64::INFINITY;
+            // first pass: find ymin
+            for (&x, &y) in dataset.data.column(0).iter().zip(dataset.data.column(1)) {
+                if (x - *cal_x).abs() <= self.window {
+                    if y < ymin {
+                        ymin = y;
+                    }
+                }
             }
+            // second pass: calculate centroid
+            for (&x, &y) in dataset.data.column(0).iter().zip(dataset.data.column(1)) {
+                if (x - *cal_x).abs() <= self.window {
+                    numerator += x * (y - ymin);
+                    denominator += y - ymin;
+                }
+            }
+            *cal_x = numerator / denominator;
         }
+    }
 
-        self.coefficients.clear();
-        for c in vandermonde.least_squares(&ys)?.solution {
-            self.coefficients.push(c);
-        }
+    pub fn fit(&mut self) -> Result<()> {
+        // TODO: allocating to intermediate Vecs here is not ideal, could
+        // certainly be avoided with different fit API
+        let xs: Vec<f64> = self.points.iter().map(|Pair { a, b: _ }| *a).collect();
+        let ys: Vec<f64> = self.points.iter().map(|Pair { a: _, b }| *b).collect();
+
+        self.coefficients = fit(&xs, &ys, self.order)?;
         Ok(())
     }
 
@@ -82,6 +109,7 @@ impl Default for CalibrationTransform {
         Self {
             points: Default::default(),
             order: 1,
+            window: 0.0,
             coefficients: Default::default(),
         }
     }

@@ -966,6 +966,9 @@ impl TransformerGUI for CalibrationTransform {
         let label = ui.label("Polynomial order");
         ui.add(egui::DragValue::new(&mut self.order).speed(1))
             .labelled_by(label.id);
+        let label = ui.label("Centroid window");
+        ui.add(egui::DragValue::new(&mut self.window).speed(0.1))
+            .labelled_by(label.id);
         let mut remove: Option<usize> = None;
         for (i, pair) in self.points.iter_mut().enumerate() {
             ui.label(format!("point {}:", i + 1));
@@ -999,7 +1002,9 @@ impl TransformerGUI for CalibrationTransform {
 
     fn update_from_plot_extension(&mut self, ext: PlotExtensionResult) -> () {
         match ext {
-            PlotExtensionResult::Spline(points) => self.points = points,
+            PlotExtensionResult::Calibration(points) => {
+                self.points = points;
+            }
             _ => {
                 panic!(
                     "Calibration transformer got wrong plot extension result. This should not have happened, please file an issue."

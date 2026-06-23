@@ -15,6 +15,7 @@ pub enum PlotExtensionResult {
     Mask(Vec<Pair<usize>>),
     Normalize((f64, Option<f64>)),
     Spline(Vec<Pair<f64>>),
+    Calibration(Vec<Pair<f64>>),
 }
 
 pub trait PlotExtensionGUI {
@@ -528,6 +529,7 @@ pub struct CalibrationExtensionGUI {
     pub is_active: bool,
     pub points: Vec<Pair<f64>>,
     pub order: usize,
+    residual_multiplier: f64,
 }
 
 impl CalibrationExtensionGUI {
@@ -536,21 +538,19 @@ impl CalibrationExtensionGUI {
             is_active: true,
             points,
             order,
+            residual_multiplier: 1.0,
         }
     }
 }
 
 impl PlotExtensionGUI for CalibrationExtensionGUI {
     fn modify_plot(&mut self, plot_ui: &mut PlotUi) {
-        if !self.is_active {
-            return;
-        }
-
         // Draw vertical lines at calibration points
         for pair in &self.points {
             plot_ui.vline(VLine::new(pair.a).color(Color32::from_rgb(255, 0, 0)));
         }
 
+        // Draw residuals
         let mut cal = CalibrationTransform::new(&self.points, self.order);
         if let Ok(()) = cal.fit() {
             let xs = ndarray::Array1::from_iter(self.points.iter().map(|Pair { a, b: _ }| *a));
@@ -560,12 +560,24 @@ impl PlotExtensionGUI for CalibrationExtensionGUI {
                 .points
                 .iter()
                 .zip(ys.iter())
-                .map(|(Pair { a, b }, y)| [*a, b - y])
+                .map(|(Pair { a, b }, y)| [*a, (b - y) * self.residual_multiplier])
                 .collect::<Vec<_>>();
-            plot_ui.line(Line::new(residuals));
+            plot_ui.points(
+                Points::new(residuals)
+                    .radius(2.0)
+                    .color(Color32::GOLD)
+                    .shape(egui_plot::MarkerShape::Diamond)
+                    .name("Residuals of Calibration Fit"),
+            );
         }
 
-        // Handle right-click to add new point
+        // Only plot current state if not active
+        // do not react to input events
+        if !self.is_active {
+            return;
+        }
+
+        // Handle left-click to add new point
         if plot_ui.response().clicked() {
             if let Some(point) = plot_ui.pointer_coordinate() {
                 self.points.push(Pair {
@@ -575,6 +587,7 @@ impl PlotExtensionGUI for CalibrationExtensionGUI {
             }
         }
 
+        // Handle right-click to remove closest point
         if plot_ui.response().secondary_clicked() {
             if let Some(point) = plot_ui.pointer_coordinate() {
                 let mut remove_point_index: (Option<usize>, f64) = (None, f64::INFINITY);
@@ -591,8 +604,19 @@ impl PlotExtensionGUI for CalibrationExtensionGUI {
         }
     }
 
+    fn modify_ui(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            let extension_toggle_label = self.extension_toggle_label();
+            let is_enabled_ref = self.get_is_active_reference();
+            ui.toggle_value(is_enabled_ref, extension_toggle_label);
+            let label = ui.label("Scale Residuals");
+            ui.add(egui::DragValue::new(&mut self.residual_multiplier).speed(1.0))
+                .labelled_by(label.id);
+        });
+    }
+
     fn get_extension_result(&self) -> PlotExtensionResult {
-        PlotExtensionResult::Spline(self.points.clone())
+        PlotExtensionResult::Calibration(self.points.clone())
     }
 
     fn get_is_active_reference(&mut self) -> &mut bool {
