@@ -5,6 +5,7 @@ use splines::{Key, Spline};
 
 use crate::{
     common::{Dataset, Pair},
+    transformations::calibration::CalibrationTransform,
     utils::nearest_index,
 };
 
@@ -526,26 +527,42 @@ impl PlotExtensionGUI for NormalizeExtensionGUI {
 pub struct CalibrationExtensionGUI {
     pub is_active: bool,
     pub points: Vec<Pair<f64>>,
+    pub order: usize,
 }
 
 impl CalibrationExtensionGUI {
-    pub fn new(points: Vec<Pair<f64>>) -> Self {
+    pub fn new(points: Vec<Pair<f64>>, order: usize) -> Self {
         Self {
             is_active: true,
             points,
+            order,
         }
     }
 }
 
 impl PlotExtensionGUI for CalibrationExtensionGUI {
     fn modify_plot(&mut self, plot_ui: &mut PlotUi) {
+        if !self.is_active {
+            return;
+        }
+
         // Draw vertical lines at calibration points
         for pair in &self.points {
             plot_ui.vline(VLine::new(pair.a).color(Color32::from_rgb(255, 0, 0)));
         }
 
-        if !self.is_active {
-            return;
+        let mut cal = CalibrationTransform::new(&self.points, self.order);
+        if let Ok(()) = cal.fit() {
+            let xs = ndarray::Array1::from_iter(self.points.iter().map(|Pair { a, b: _ }| *a));
+            let mut ys = xs.clone();
+            cal.eval_inplace(ys.view_mut());
+            let residuals = self
+                .points
+                .iter()
+                .zip(ys.iter())
+                .map(|(Pair { a, b }, y)| [*a, b - y])
+                .collect::<Vec<_>>();
+            plot_ui.line(Line::new(residuals));
         }
 
         // Handle right-click to add new point

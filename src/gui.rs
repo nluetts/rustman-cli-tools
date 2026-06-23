@@ -993,7 +993,7 @@ impl TransformerGUI for CalibrationTransform {
     }
 
     fn get_plot_extension(&self, _ds: Dataset) -> Option<Box<dyn PlotExtensionGUI>> {
-        let ext = CalibrationExtensionGUI::new(self.points.clone());
+        let ext = CalibrationExtensionGUI::new(self.points.clone(), self.order);
         Some(Box::new(ext))
     }
 

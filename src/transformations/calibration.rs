@@ -31,7 +31,15 @@ impl Transformer for CalibrationTransform {
 }
 
 impl CalibrationTransform {
-    fn fit(&mut self) -> Result<()> {
+    pub fn new(points: &[Pair<f64>], order: usize) -> Self {
+        Self {
+            points: points.to_vec(),
+            order,
+            coefficients: Vec::new(),
+        }
+    }
+
+    pub fn fit(&mut self) -> Result<()> {
         let m = self.points.len();
         if m == 0 || m - 1 < self.order {
             return Err(anyhow!(
@@ -58,7 +66,7 @@ impl CalibrationTransform {
         Ok(())
     }
 
-    fn eval_inplace(&self, mut xs: ArrayBase<ViewRepr<&mut f64>, Dim<[usize; 1]>>) {
+    pub fn eval_inplace(&self, mut xs: ArrayBase<ViewRepr<&mut f64>, Dim<[usize; 1]>>) {
         for x in xs.iter_mut() {
             let mut x_cal = 0.0;
             for (n, c) in self.coefficients.iter().enumerate() {
