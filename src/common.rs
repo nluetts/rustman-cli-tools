@@ -1,6 +1,7 @@
 use crate::gui::TransformerGUI;
 use crate::spe_rs::SpeData;
 use crate::transformations::calibration::CalibrationTransform;
+use crate::transformations::moving_average::MovingAverageTransform;
 use crate::transformations::offset::OffsetIOBuffers;
 use crate::transformations::roi_avg::RoiAverageTransform;
 use crate::transformations::{
@@ -380,6 +381,7 @@ fn yaml_segment_to_transform(segment: &String) -> Result<Box<dyn TransformerGUI>
         FinningTransform,
         IntegrateTransform,
         MaskTransform,
+        MovingAverageTransform,
         NormalizeTransform,
         OffsetTransform,
         RamanShiftTransform,
@@ -421,6 +423,9 @@ impl Pipeline {
                         transformations.push(Box::new(FinningTransform::parse_from(subargs)))
                     }
                     "mask" => transformations.push(Box::new(MaskTransform::parse_from(subargs))),
+                    "moving-average" => {
+                        transformations.push(Box::new(MovingAverageTransform::parse_from(subargs)))
+                    }
                     "offset" => {
                         transformations.push(Box::new(OffsetTransform::parse_from(subargs)))
                     }

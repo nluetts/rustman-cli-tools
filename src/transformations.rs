@@ -9,6 +9,7 @@ pub mod draw_baseline;
 pub mod finning;
 pub mod integrate;
 pub mod mask_pixels;
+pub mod moving_average;
 pub mod normalize;
 pub mod offset;
 pub mod reshape;

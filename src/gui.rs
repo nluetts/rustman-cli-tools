@@ -34,6 +34,7 @@ use crate::{
         finning::FinningTransform,
         integrate::IntegrateTransform,
         mask_pixels::MaskTransform,
+        moving_average::MovingAverageTransform,
         normalize::{NormalizeIOBuffers, NormalizeTransform},
         offset::OffsetTransform,
         reshape::ReshapeTransform,
@@ -230,6 +231,11 @@ impl RamanGuiApp {
                     &mut self.insert_transformer,
                     InsertTransformer::Mask,
                     "Mask Points",
+                );
+                ui.selectable_value(
+                    &mut self.insert_transformer,
+                    InsertTransformer::MovingAverage,
+                    "Moving Average",
                 );
                 ui.selectable_value(
                     &mut self.insert_transformer,
@@ -678,6 +684,7 @@ impl RamanGuiApp {
                 local_baseline: true,
             }),
             InsertTransformer::Mask => Box::new(MaskTransform { mask: vec![] }),
+            InsertTransformer::MovingAverage => Box::new(MovingAverageTransform { window_size: 3 }),
             InsertTransformer::Normalize => {
                 let iterx = self.dataset.data.axis_iter(ndarray::Axis(1)).step_by(2);
                 let itery = self
@@ -871,6 +878,7 @@ enum InsertTransformer {
     Finning,
     Integrate,
     Mask,
+    MovingAverage,
     Normalize,
     Offset,
     RamanShift,
@@ -1124,6 +1132,13 @@ impl TransformerGUI for MaskTransform {
     }
     fn should_plot_dataset_state_after_transformation(&self) -> bool {
         false
+    }
+}
+
+impl TransformerGUI for MovingAverageTransform {
+    fn render_form(&mut self, ui: &mut Ui) -> () {
+        ui.heading("Moving Average");
+        ui.add(Slider::new(&mut self.window_size, 1..=20).text("Window size"));
     }
 }
 
