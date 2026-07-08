@@ -974,8 +974,8 @@ impl TransformerGUI for CalibrationTransform {
         let label = ui.label("Polynomial order");
         ui.add(egui::DragValue::new(&mut self.order).speed(1))
             .labelled_by(label.id);
-        let label = ui.label("Centroid window");
-        ui.add(egui::DragValue::new(&mut self.window).speed(0.1))
+        let label = ui.label("Centroid window half-width (datapoints)");
+        ui.add(egui::DragValue::new(&mut self.window).speed(1))
             .labelled_by(label.id);
         let mut remove: Option<usize> = None;
         for (i, pair) in self.points.iter_mut().enumerate() {
