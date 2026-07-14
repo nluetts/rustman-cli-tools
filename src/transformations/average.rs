@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Parser, Serialize, Deserialize, Default)]
 #[serde(tag = "transformation")]
 pub struct AverageTransform {
-    count: Option<usize>,
+    averaged_frames_count: Option<usize>,
 }
 
 impl Transformer for AverageTransform {
@@ -17,7 +17,7 @@ impl Transformer for AverageTransform {
     }
     fn transform(&mut self, dataset: &mut Dataset) -> Result<()> {
         let mask = s![.., 1..;2]; // every second column
-        self.count = Some(dataset.data.slice(mask).len_of(Axis(1)));
+        self.averaged_frames_count = Some(dataset.data.slice(mask).len_of(Axis(1)));
         let average_intensity = dataset.data.slice(mask).mean_axis(Axis(1)).unwrap();
         let wavenumber_axis = dataset.data.slice(s![.., 0]);
         let mut averaged = Array2::default((0, 2));
