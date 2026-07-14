@@ -664,7 +664,7 @@ impl RamanGuiApp {
                 comment: '#',
                 horizontal: false,
             }),
-            InsertTransformer::Average => Box::new(AverageTransform {}),
+            InsertTransformer::Average => Box::new(AverageTransform::default()),
             InsertTransformer::Baseline => Box::new(BaselineTransform {
                 points: vec![],
                 store: false,

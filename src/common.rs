@@ -510,7 +510,7 @@ pub fn default_transformations() -> Vec<Box<dyn TransformerGUI>> {
         threshold: 3.0,
         iterations: 100,
     }));
-    transformations.push(Box::new(AverageTransform {}));
+    transformations.push(Box::new(AverageTransform::default()));
     transformations.push(Box::new(OffsetTransform {
         offset: 0.05,
         percentile: true,
